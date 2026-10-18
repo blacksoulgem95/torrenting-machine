@@ -1,10 +1,12 @@
-# Seedbox stack (Jellyfin gira in un ambiente separato) — avviato al boot dal servizio OpenRC `seedbox`.
+# Stack seedbox: le app che usano /data (Jellyfin gira in un ambiente separato) —
+# avviato al boot dal servizio OpenRC `seedbox`, si ferma con il mount rclone.
+# NPM, Prowlarr, Seerr e la pagina di stato sono in core.yaml (seedbox-core).
 # Tutto il traffico in uscita dell'host passa da wg0 (wg-quick full tunnel),
 # quindi anche quello dei container in bridge. qBittorrent usa la rete host
 # per potersi legare direttamente a wg0 (kill switch).
 # /data può essere un mount rclone di Backblaze B2 (servizio OpenRC rclone-b2):
 # :rslave fa vedere ai container un eventuale remount; i download incompleti
-# restano sul disco locale (/incomplete) e finiti vengono spostati su /data.
+# vanno direttamente su /data (cartella incompleti disattivata in qBittorrent).
 
 x-common: &common
   restart: unless-stopped
@@ -33,31 +35,6 @@ services:
       - ./config/qbittorrent:/config
       - ${LOCAL_INCOMPLETE:-/srv/seedbox/incomplete}:/incomplete
       - ${DATA_ROOT}:/data:rslave
-
-  nginx-proxy-manager:
-    <<: *common
-    image: docker.io/jc21/nginx-proxy-manager:latest
-    container_name: nginx-proxy-manager
-    environment:
-      TZ: ${TZ}
-      INITIAL_ADMIN_EMAIL: ${NPM_ADMIN_EMAIL}
-      INITIAL_ADMIN_PASSWORD: ${NPM_ADMIN_PASSWORD}
-    ports:
-      - "80:80"
-      - "443:443"
-      - "81:81"
-    volumes:
-      - ./config/npm/data:/data
-      - ./config/npm/letsencrypt:/etc/letsencrypt
-
-  prowlarr:
-    <<: *common
-    image: lscr.io/linuxserver/prowlarr:latest
-    container_name: prowlarr
-    environment: *lsio-env
-    ports: ["9696:9696"]
-    volumes:
-      - ./config/prowlarr:/config
 
   sonarr:
     <<: *common
@@ -111,18 +88,6 @@ services:
       - ./config/bazarr:/config
       - ${DATA_ROOT}:/data:rslave
 
-  seerr:
-    <<: *common
-    image: ghcr.io/seerr-team/seerr:latest
-    container_name: seerr
-    init: true
-    environment:
-      TZ: ${TZ}
-      LOG_LEVEL: info
-    ports: ["5055:5055"]
-    volumes:
-      - ./config/seerr:/app/config
-
   # File manager web su /data (fm.casa.local): spostamenti e rinomine finiscono
   # cifrati su B2 tramite il mount rclone. Admin creato da setup.sh.
   filebrowser:
@@ -136,18 +101,7 @@ services:
       - ./config/filebrowser/database:/database
       - ${DATA_ROOT}:/srv:rslave
 
-  # Pagina di stato rclone/B2/dischi (rclone.casa.local). I dati li scrive
-  # il servizio OpenRC seedbox-status in /var/lib/seedbox/status.
-  rclone-status:
-    <<: *common
-    image: docker.io/library/busybox:1.37.0
-    container_name: rclone-status
-    command: ["httpd", "-f", "-p", "8080", "-h", "/www"]
-    read_only: true
-    volumes:
-      - ./status/www:/www:ro
-      - /var/lib/seedbox/status:/www/data:ro
-
 networks:
   seedbox:
     name: seedbox
+    external: true

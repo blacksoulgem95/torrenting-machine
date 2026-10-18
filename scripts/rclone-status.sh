@@ -1,8 +1,9 @@
 #!/bin/sh
-# Ogni 5s scrive per la pagina rclone.casa.local:
-#   $STATUS_DIR/status.json  - stato attuale: cache VFS, coda verso B2, file in
+# Scrive per la pagina rclone.casa.local:
+#   $STATUS_DIR/status.json  - ogni secondo: cache VFS, coda verso B2, file in
 #                              caricamento (nome + avanzamento), dischi, RAM, CPU
-#   $STATUS_DIR/history.json - ultima ora di campioni per i grafici
+#   $STATUS_DIR/history.json - ogni 5s, ultima ora di campioni (medie) per i grafici
+# Le parti costose (salute dei dischi, log di rclone, du) girano più di rado.
 # Gira come root (tune2fs, dmesg, password rc).
 
 STATUS_DIR="${STATUS_DIR:-/var/lib/seedbox/status}"
@@ -11,9 +12,10 @@ RC_PASS_FILE=/etc/rclone/rc.pass
 GUARD_STATE=/var/lib/seedbox/disk-guard.paused
 DISKS="${STATUS_DISKS:-/srv/seedbox /}"
 DATA_DISK="${STATUS_DATA_DISK:-/srv/seedbox}"
-INTERVAL=5
+INTERVAL=1                  # status.json
+SLOW_EVERY=5                # storico, salute dei dischi, avvio di rclone: ogni 5s
 HISTORY_POINTS=720          # 1 ora a 5s
-DU_EVERY=12                 # composizione del disco dati ogni minuto
+DU_EVERY=60                 # composizione del disco dati ogni minuto
 RCLONE_LOG=/var/log/rclone-b2.log
 ENV_FILE="$(dirname "$0")/../.env"
 CACHE_META="$(sed -n 's/^RCLONE_CACHE_DIR=//p' "$ENV_FILE" | tr -d '"')"
@@ -74,45 +76,55 @@ WORK=/run/seedbox-status
 mkdir -p "$WORK" && chmod 700 "$WORK"
 chmod 755 "$STATUS_DIR"
 [ -s "$STATUS_DIR/history.json" ] || echo '[]' > "$STATUS_DIR/history.json"
-echo "$(date '+%F %T') start ($STATUS_DIR ogni ${INTERVAL}s)"
+echo "$(date '+%F %T') start (status.json ogni ${INTERVAL}s, storico ogni $((INTERVAL * SLOW_EVERY))s)"
 
-prev_cpu=$(cpu_counters)
-prev_io=$(disk_counters "$DATA_DISK")
-prev_up="" prev_t=$(date +%s)
-iter=0 du_incomplete=0 du_cache=0
+# secondi dall'avvio con i centesimi: con un giro da ~1s serve più precisione di date +%s
+uptime_s() { cut -d' ' -f1 /proc/uptime; }
+
+# CPU (% sul totale, tutte le CPU) tra due letture di cpu_counters
+cpu_json() {
+	echo "$1 $2" | awk '{dt = $8 - $4; if (dt <= 0) dt = 1;
+		printf "{\"user\":%.1f,\"system\":%.1f,\"iowait\":%.1f}", ($5-$1)*100/dt, ($6-$2)*100/dt, ($7-$3)*100/dt}'
+}
+
+# I/O (byte/s) tra due letture di disk_counters, a distanza di $3 secondi
+io_json() {
+	echo "$1 $2" | awk -v dt="$3" 'NF == 4 {if (dt <= 0) dt = 1; r = ($3-$1)/dt; w = ($4-$2)/dt;
+		printf "{\"read\":%.0f,\"write\":%.0f}", (r < 0 ? 0 : r), (w < 0 ? 0 : w)} NF != 4 {print "{\"read\":0,\"write\":0}"}'
+}
+
+# byte/s caricati verso B2 tra due letture di core/stats (azzerate al riavvio di rclone)
+up_rate() {
+	awk -v a="$1" -v b="$2" -v dt="$3" 'BEGIN {if (a == "" || b == "" || b + 0 < a + 0 || dt <= 0) print 0;
+		else printf "%.0f", (b - a) / dt}'
+}
+
+prev_cpu=$(cpu_counters) h_cpu=$prev_cpu
+prev_io=$(disk_counters "$DATA_DISK") h_io=$prev_io
+prev_up="" h_up="" prev_t=$(uptime_s) h_t=$prev_t
+iter=0 du_incomplete=0 du_cache=0 disks="[]" startup=null
 
 while :; do
 	sleep "$INTERVAL"
-	now=$(date +%s)
-	dt=$((now - prev_t)); [ "$dt" -gt 0 ] || dt=$INTERVAL
+	now=$(date +%s) t=$(uptime_s)
+	dt=$(awk -v a="$prev_t" -v b="$t" 'BEGIN {print b - a}')
+	slow=$([ $((iter % SLOW_EVERY)) -eq 0 ] && echo 1)
 
 	# risposte rc su file: la coda può essere enorme e non sta in un argomento di jq
 	for c in vfs/stats vfs/queue core/stats; do
 		f="$WORK/$(echo "$c" | tr / _).json"
 		rc "$c" > "$f" && [ -s "$f" ] || echo null > "$f"
 	done
-	disks=$(for m in $DISKS; do mountpoint -q "$m" || [ "$m" = / ] && disk_json "$m"; done | jq -s .)
+	[ -n "$slow" ] && disks=$(for m in $DISKS; do mountpoint -q "$m" || [ "$m" = / ] && disk_json "$m"; done | jq -s .)
 	paused=$(grep -c . "$GUARD_STATE" 2>/dev/null)
 
-	# CPU (% sul totale, tutte le CPU)
 	cur_cpu=$(cpu_counters)
-	cpu=$(echo "$prev_cpu $cur_cpu" | awk '{dt = $8 - $4; if (dt <= 0) dt = 1;
-		printf "{\"user\":%.1f,\"system\":%.1f,\"iowait\":%.1f}", ($5-$1)*100/dt, ($6-$2)*100/dt, ($7-$3)*100/dt}')
-	prev_cpu=$cur_cpu
-
-	# I/O del disco dati (byte/s)
+	cpu=$(cpu_json "$prev_cpu" "$cur_cpu")
 	cur_io=$(disk_counters "$DATA_DISK")
-	io=$(echo "$prev_io $cur_io" | awk -v dt="$dt" 'NF == 4 {r = ($3-$1)/dt; w = ($4-$2)/dt;
-		printf "{\"read\":%.0f,\"write\":%.0f}", (r < 0 ? 0 : r), (w < 0 ? 0 : w)} NF != 4 {print "{\"read\":0,\"write\":0}"}')
-	prev_io=$cur_io
-
-	# velocità di caricamento verso B2 dai byte trasferiti da rclone (azzerati al riavvio)
+	io=$(io_json "$prev_io" "$cur_io" "$dt")
 	cur_up=$(jq -r '.bytes // empty' "$WORK/core_stats.json" 2>/dev/null)
-	up=0
-	if [ -n "$cur_up" ] && [ -n "$prev_up" ] && [ "$cur_up" -ge "$prev_up" ]; then
-		up=$(( (cur_up - prev_up) / dt ))
-	fi
-	prev_up=$cur_up prev_t=$now
+	up=$(up_rate "$prev_up" "$cur_up" "$dt")
+	prev_cpu=$cur_cpu prev_io=$cur_io prev_up=$cur_up prev_t=$t
 
 	# RAM (byte)
 	mem=$(awk '/^(MemTotal|MemFree|Buffers|Cached|SReclaimable|SwapTotal|SwapFree):/ {v[$1] = $2 * 1024}
@@ -130,26 +142,31 @@ while :; do
 	fi
 	iter=$((iter + 1))
 
-	sample=$(jq -cn --argjson t "$now" --argjson cpu "$cpu" --argjson mem "$mem" \
-		--argjson io "$io" --argjson up "$up" \
-		'{t: $t, cpu: $cpu, mem: {app: $mem.app, cache: $mem.cache, swap: $mem.swap_used}, io: $io, up: $up}')
-	jq -c --argjson s "$sample" --argjson n "$HISTORY_POINTS" '(. + [$s])[-$n:]' \
-		"$STATUS_DIR/history.json" > "$STATUS_DIR/history.json.tmp" 2>/dev/null \
-		&& mv "$STATUS_DIR/history.json.tmp" "$STATUS_DIR/history.json" \
-		|| echo '[]' > "$STATUS_DIR/history.json"
+	if [ -n "$slow" ]; then
+		# storico: medie sugli ultimi SLOW_EVERY secondi, non l'ultimo campione da 1s
+		hdt=$(awk -v a="$h_t" -v b="$t" 'BEGIN {print b - a}')
+		sample=$(jq -cn --argjson t "$now" --argjson cpu "$(cpu_json "$h_cpu" "$cur_cpu")" --argjson mem "$mem" \
+			--argjson io "$(io_json "$h_io" "$cur_io" "$hdt")" --argjson up "$(up_rate "$h_up" "$cur_up" "$hdt")" \
+			'{t: $t, cpu: $cpu, mem: {app: $mem.app, cache: $mem.cache, swap: $mem.swap_used}, io: $io, up: $up}')
+		h_cpu=$cur_cpu h_io=$cur_io h_up=$cur_up h_t=$t
+		jq -c --argjson s "$sample" --argjson n "$HISTORY_POINTS" '(. + [$s])[-$n:]' \
+			"$STATUS_DIR/history.json" > "$STATUS_DIR/history.json.tmp" 2>/dev/null \
+			&& mv "$STATUS_DIR/history.json.tmp" "$STATUS_DIR/history.json" \
+			|| echo '[]' > "$STATUS_DIR/history.json"
 
-	# avanzamento dall'ultimo avvio di rclone: voci riprese dalla cache e upload riusciti
-	ln=$(grep -n 'Serving remote control' "$RCLONE_LOG" 2>/dev/null | tail -n 1 | cut -d: -f1)
-	dirty=$(grep -rlE '"Dirty": ?true' "$CACHE_META" 2>/dev/null | wc -l)
-	startup=$(tail -n +"${ln:-1}" "$RCLONE_LOG" 2>/dev/null | awk -v d="$dirty" 'NR == 1 {s = $1 " " $2} /queuing for upload/ {q++} /upload succeeded/ {u++}
-		END {printf "{\"requeued\":%d,\"uploaded\":%d,\"dirty\":%d,\"since\":\"%s\"}", q, u, d, s}')
+		# avanzamento dall'ultimo avvio di rclone: voci riprese dalla cache e upload riusciti
+		ln=$(grep -n 'Serving remote control' "$RCLONE_LOG" 2>/dev/null | tail -n 1 | cut -d: -f1)
+		dirty=$(grep -rlE '"Dirty": ?true' "$CACHE_META" 2>/dev/null | wc -l)
+		startup=$(tail -n +"${ln:-1}" "$RCLONE_LOG" 2>/dev/null | awk -v d="$dirty" 'NR == 1 {s = $1 " " $2} /queuing for upload/ {q++} /upload succeeded/ {u++}
+			END {printf "{\"requeued\":%d,\"uploaded\":%d,\"dirty\":%d,\"since\":\"%s\"}", q, u, d, s}')
+	fi
 	jq -n \
 		--slurpfile vfs_f "$WORK/vfs_stats.json" --slurpfile queue_f "$WORK/vfs_queue.json" \
 		--slurpfile core_f "$WORK/core_stats.json" \
 		--argjson disks "${disks:-[]}" --argjson paused "${paused:-0}" \
 		--argjson mounted "$(mountpoint -q /data && echo true || echo false)" \
 		--argjson rclone_running "$(pidof rclone >/dev/null && echo true || echo false)" \
-		--argjson queue_limit 100 \
+		--argjson queue_limit 100 --argjson interval "$INTERVAL" \
 		--argjson startup "${startup:-null}" \
 		--argjson cpu "$cpu" --argjson mem "$mem" --argjson load "$load" --argjson cores "$cores" \
 		--argjson io "$io" --argjson up "$up" \
@@ -164,6 +181,7 @@ while :; do
 	| ($disks | map(select(.mount == $data_disk)) | first) as $dd
 	| {
 		updated: $updated,
+		interval: $interval,
 		rc_available: ($core != null),
 		vfs_ready: ($vfs != null),
 		starting: ($rclone_running and ($mounted | not)),

@@ -9,13 +9,17 @@ Appunti per riprendere il lavoro. Dettagli tecnici in `README.md` e `jellyfin/RE
   `/srv/seedbox` via fstab). IP LAN `<ip-vm>` (rete NAT libvirt). WireGuard `wg0`
   (ProtonVPN) in full tunnel: IP pubblico VPN `<ip-vpn>`.
 - **Podman rootful** + `docker compose` sul socket `/run/podman/podman.sock`
-  (`doas scripts/dc ...`). `doas` senza password per `seedbox` (`override-doas.sh`).
-- **Servizi OpenRC** (runlevel default): `podman` → `rclone-b2` → `seedbox`, più
-  `seedbox-natpmp`, `seedbox-diskguard`, `seedbox-status`.
+  (`doas scripts/dc ...` per lo stack `seedbox`, `doas scripts/dc-core ...` per `seedbox-core`). `doas` senza password per `seedbox` (`override-doas.sh`).
+- **Servizi OpenRC** (runlevel default): `podman` → `seedbox-core` (core.yaml: NPM, Prowlarr,
+  Seerr, pagina di stato; non dipende da /data e resta su) e `rclone-b2` → `seedbox`
+  (compose.yaml: qBittorrent, *arr, Bazarr, File Browser; si ferma con il mount), più
+  `seedbox-natpmp`, `seedbox-diskguard`, `seedbox-status`. Rete podman `seedbox` condivisa.
 - **Storage**: `/data` = rclone **crypt** su `b2:<bucket>/seedbox` (B2 S3, eu-central-003);
   su B2 nomi e contenuti sono cifrati. Sul disco dati locale: download incompleti di
   qBittorrent (`/srv/seedbox/incomplete`) e cache VFS rclone (`/srv/seedbox/rclone-cache`,
-  max 20G). `rclone-b2` non parte se `/srv/seedbox` non è montato.
+  max 100G: il disco dati non ospita più gli incompleti). `rclone-b2` non parte se `/srv/seedbox` non è montato.
+- **Download**: tutti scrivono direttamente su `/data` (cartella incompleti disattivata),
+  sequenziali; la cache rclone li carica man mano.
 - **Protezione disco**: `seedbox-diskguard` ferma i download incompleti sotto 2 GB liberi
   e riavvia solo quelli che ha fermato sopra 4 GB.
 - **App** (`*.casa.local` via Nginx Proxy Manager, creati da `scripts/npm-provision.sh`):
@@ -24,7 +28,7 @@ Appunti per riprendere il lavoro. Dettagli tecnici in `README.md` e `jellyfin/RE
   `COMPOSE_PROFILES=readarr`. FlareSolverr rimosso: i siti che bloccano l'IP della VPN
   non li risolveva comunque.
 - **Pagina di stato** `rclone.casa.local`: `scripts/rclone-status.sh` (servizio
-  `seedbox-status`) scrive ogni 5s `status.json` + `history.json` (1 ora) in
+  `seedbox-status`) scrive ogni 1s `status.json` e ogni 5s `history.json` (1 ora) in
   `/var/lib/seedbox/status`; li serve `busybox httpd` (`status/www`). Dati da API rc di
   rclone (127.0.0.1:5572, password in `/etc/rclone/rc.pass`), /proc, tune2fs, dmesg.
   Mostra anche i nomi dei file in caricamento (richiesto): la pagina non ha login.

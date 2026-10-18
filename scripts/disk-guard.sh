@@ -2,7 +2,7 @@
 # Protegge il disco locale (incompleti + cache rclone): sotto DISK_GUARD_MIN_GB liberi
 # ferma tutti i download incompleti di qBittorrent, sopra DISK_GUARD_RESUME_GB riavvia
 # solo quelli fermati da qui. Forza anche download sequenziale + primo/ultimo pezzo
-# sui torrent della categoria "b2" (scaricano direttamente sul mount B2).
+# su tutti i download (scrivono direttamente sul mount B2, senza cartella incompleti).
 
 ENV_FILE="$(dirname "$0")/../.env"
 envget() { sed -n "s/^$1=//p" "$ENV_FILE" 2>/dev/null | tr -d '"'; }
@@ -49,11 +49,11 @@ while :; do
 			&& { log "spazio libero ${free}M: riavviati $(wc -l < "$STATE") download"; : > "$STATE"; }
 	fi
 
-	# categoria b2: download sequenziale e primo/ultimo pezzo, così i file si
+	# download sequenziale e primo/ultimo pezzo, così i file si
 	# completano uno alla volta, vengono chiusi, caricati su B2 e tolti dalla cache
-	seq=$(printf '%s' "$torrents" | jq -r '.[] | select(.category == "b2" and .progress < 1 and (.seq_dl | not)) | .hash' | paste -sd '|')
+	seq=$(printf '%s' "$torrents" | jq -r '.[] | select(.progress < 1 and (.seq_dl | not)) | .hash' | paste -sd '|')
 	[ -n "$seq" ] && api torrents/toggleSequentialDownload --data-urlencode "hashes=$seq" >/dev/null
-	flp=$(printf '%s' "$torrents" | jq -r '.[] | select(.category == "b2" and .progress < 1 and (.f_l_piece_prio | not)) | .hash' | paste -sd '|')
+	flp=$(printf '%s' "$torrents" | jq -r '.[] | select(.progress < 1 and (.f_l_piece_prio | not)) | .hash' | paste -sd '|')
 	[ -n "$flp" ] && api torrents/toggleFirstLastPiecePrio --data-urlencode "hashes=$flp" >/dev/null
 
 	sleep "$INTERVAL"

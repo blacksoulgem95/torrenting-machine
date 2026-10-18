@@ -35,12 +35,13 @@ command_args="mount b2crypt: ${DATA_ROOT}
 	--config $RCLONE_CONF
 	--allow-other --uid ${PUID:-1000} --gid ${PGID:-1000} --umask 002
 	--vfs-cache-mode full
-	--vfs-cache-max-size $RCLONE_CACHE_SIZE --vfs-cache-max-age 72h
+	--vfs-cache-max-size $RCLONE_CACHE_SIZE --vfs-cache-min-free-space 10G
+	--vfs-cache-max-age 1h --vfs-cache-poll-interval 1m
 	--vfs-write-back 10s --vfs-fast-fingerprint
 	--cache-dir $RCLONE_CACHE_DIR
 	--dir-cache-time 10m --poll-interval 0
 	--buffer-size 8M --vfs-read-chunk-size 16M
-	--transfers 4 --s3-chunk-size 16M --s3-upload-concurrency 2
+	--transfers 10 --s3-chunk-size 16M --s3-upload-concurrency 1
 	--log-level INFO --log-file /var/log/rclone-b2.log --stats 0
 	--rc --rc-addr 127.0.0.1:5572"
 

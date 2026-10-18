@@ -1,0 +1,3 @@
+#!/bin/sh
+# docker compose sullo stack core (core.yaml). Uso: doas scripts/dc-core ps
+cd "$(dirname "$0")/.." && DOCKER_HOST=unix:///run/podman/podman.sock exec docker compose -f core.yaml "$@"

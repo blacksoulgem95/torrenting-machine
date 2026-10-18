@@ -27,7 +27,9 @@ Jellyfin gira in un ambiente separato: Fly.io, vedi [jellyfin/README.md](jellyfi
    È idempotente: rilancialo dopo aver montato il disco.
 
 Credenziali in `.env` (`NPM_ADMIN_*`, `QBIT_*`).
-Comandi manuali: `doas scripts/dc ps|logs -f sonarr|pull|up -d`.
+Comandi manuali: `doas scripts/dc ps|logs -f sonarr|pull|up -d` (stack `seedbox`, app su /data)
+e `doas scripts/dc-core ...` (stack `seedbox-core`: NPM, Prowlarr, Seerr, pagina di stato,
+che restano su anche quando il mount rclone si riavvia).
 
 ## Accesso (Nginx Proxy Manager, `*.casa.local`)
 

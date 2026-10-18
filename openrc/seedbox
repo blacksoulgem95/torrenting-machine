@@ -3,7 +3,7 @@
 # Configurazione in /etc/conf.d/seedbox.
 
 name="Seedbox stack"
-description="qBittorrent, *arr, Seerr e Nginx Proxy Manager su podman"
+description="qBittorrent, *arr, Bazarr e File Browser su podman"
 
 : "${SEEDBOX_DIR:=/home/seedbox/infra}"
 : "${DOCKER_HOST:=unix:///run/podman/podman.sock}"
@@ -11,7 +11,7 @@ export DOCKER_HOST
 
 depend() {
 	# SEEDBOX_STORAGE=rclone-b2 in /etc/conf.d/seedbox quando /data è su B2
-	need podman net wg-quick.wg0 $SEEDBOX_STORAGE
+	need podman net wg-quick.wg0 seedbox-core $SEEDBOX_STORAGE
 	after wg-quick.wg0
 }
 

@@ -99,7 +99,7 @@ if [ ! -f "$QB/qBittorrent.conf" ]; then
 	cat > "$QB/qBittorrent.conf" <<EOF
 [BitTorrent]
 Session\DefaultSavePath=/data/torrents
-Session\TempPathEnabled=true
+Session\TempPathEnabled=false
 Session\TempPath=/incomplete
 Session\Interface=wg0
 Session\InterfaceName=wg0
@@ -133,16 +133,20 @@ fi
 
 echo "==> Servizi OpenRC"
 chmod 755 scripts/* openrc/* setup.sh
+install -m 755 openrc/seedbox-core /etc/init.d/seedbox-core
 install -m 755 openrc/seedbox /etc/init.d/seedbox
 install -m 755 openrc/seedbox-natpmp /etc/init.d/seedbox-natpmp
 install -m 755 openrc/rclone-b2 /etc/init.d/rclone-b2
 install -m 755 openrc/seedbox-diskguard /etc/init.d/seedbox-diskguard
 install -m 755 openrc/seedbox-status /etc/init.d/seedbox-status
-for svc in seedbox seedbox-natpmp seedbox-diskguard seedbox-status rclone-b2; do
+for svc in seedbox-core seedbox seedbox-natpmp seedbox-diskguard seedbox-status rclone-b2; do
 	printf 'SEEDBOX_DIR="%s"\n' "$DIR" > "/etc/conf.d/$svc"
 done
 printf 'SEEDBOX_STORAGE="%s"\n' "$STORAGE" >> /etc/conf.d/seedbox
+rc-update add ntpd default >/dev/null	# orologio giusto: firme S3 di B2 e pagina di stato
+rc-service ntpd start >/dev/null 2>&1 || true
 rc-update add podman default >/dev/null
+rc-update add seedbox-core default >/dev/null
 rc-update add seedbox default >/dev/null
 rc-update add seedbox-natpmp default >/dev/null
 rc-update add seedbox-diskguard default >/dev/null
@@ -157,6 +161,7 @@ mkdir -p /var/lib/seedbox/status
 
 echo "==> Immagini"
 docker compose pull
+docker compose -f core.yaml pull
 
 echo "==> Avvio"
 rc-service podman start >/dev/null 2>&1 || true
@@ -167,6 +172,7 @@ if [ -n "$STORAGE" ]; then
 else
 	rc-service rclone-b2 stop >/dev/null 2>&1 || true
 fi
+rc-service seedbox-core start
 rc-service seedbox start
 rc-service seedbox-natpmp restart
 rc-service seedbox-diskguard restart
@@ -178,7 +184,7 @@ until curl -fsS --max-time 3 http://127.0.0.1:8080/api/v2/app/version >/dev/null
 	i=$((i + 1)); [ $i -lt 30 ] || break; sleep 2
 done
 curl -fsS http://127.0.0.1:8080/api/v2/app/setPreferences \
-	--data-urlencode 'json={"temp_path_enabled":true,"temp_path":"/incomplete","disk_io_type":2,"file_pool_size":20}' \
+	--data-urlencode 'json={"temp_path_enabled":false,"temp_path":"/incomplete","disk_io_type":2,"file_pool_size":20}' \
 	|| echo "    impossibile aggiornare qBittorrent (impostalo a mano: Opzioni → Download)"
 
 # categoria b2: niente cartella incompleti, scrive direttamente sul mount B2
