@@ -153,6 +153,15 @@ printf 'SEEDBOX_STORAGE="%s"\n' "$STORAGE" >> /etc/conf.d/seedbox
 rc-update add ntpd default >/dev/null	# orologio giusto: firme S3 di B2 e pagina di stato
 rc-service ntpd start >/dev/null 2>&1 || true
 rc-update add podman default >/dev/null
+# podman, all'avvio, fa partire i container "unless-stopped": dopo il mount B2.
+# Quelli che usano /data hanno comunque restart: on-failure (li avvia solo `seedbox`).
+grep -q '^rc_after=' /etc/conf.d/podman 2>/dev/null \
+	|| printf '\nrc_after="rclone-b2"\n' >> /etc/conf.d/podman
+# la cartella /data sotto il mount è immutabile: se B2 non è montato nessuno può
+# scriverci (e riempire il disco di sistema)
+if [ -n "$STORAGE" ] && ! mountpoint -q "$DATA_ROOT"; then
+	find "$DATA_ROOT" -mindepth 1 -maxdepth 1 | grep -q . || chattr +i "$DATA_ROOT" 2>/dev/null || true
+fi
 rc-update add seedbox-core default >/dev/null
 rc-update add seedbox default >/dev/null
 rc-update add seedbox-natpmp default >/dev/null
@@ -214,6 +223,10 @@ install -m 755 etc/tailscale-via-vpn.start /etc/local.d/tailscale-via-vpn.start
 rc-update add local default >/dev/null
 /etc/local.d/tailscale-via-vpn.start
 rc-update add tailscale default >/dev/null
+# Tailscale in modalità iptables: in nftables scrive nella tabella nat regole che
+# l'iptables di podman (netavark) non sa leggere e i container non partono più
+grep -q '^firewall_mode=' /etc/conf.d/tailscale 2>/dev/null \
+	|| printf '\nfirewall_mode="iptables"\n' >> /etc/conf.d/tailscale
 rc-service tailscale start >/dev/null 2>&1 || true
 
 cat <<EOF

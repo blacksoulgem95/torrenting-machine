@@ -46,8 +46,8 @@ command_args="mount b2crypt: ${DATA_ROOT}
 	--rc --rc-addr 127.0.0.1:5572"
 
 depend() {
-	need net localmount
-	after wg-quick.wg0
+	# da eth0 non si esce su internet: senza VPN B2 non è raggiungibile
+	need net localmount wg-quick.wg0
 	before seedbox
 }
 
@@ -120,6 +120,13 @@ start_post() {
 			[ -e "$DATA_ROOT/$d/$s/.keep" ] || touch "$DATA_ROOT/$d/$s/.keep"
 		done
 	done
+
+	# mount pronto: se lo stack seedbox è nel runlevel ma non è partito (es. il mount
+	# era fallito al boot e rclone-b2 è stato riavviato dopo), lo avvia. In background:
+	# OpenRC non permette di avviare un servizio dentro l'avvio di un altro.
+	if rc-update show default 2>/dev/null | grep -q '^ *seedbox |' && ! service_started seedbox; then
+		( sleep 10; rc-service seedbox start ) >/dev/null 2>&1 &
+	fi
 }
 
 stop_post() {

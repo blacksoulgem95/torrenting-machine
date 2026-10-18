@@ -9,7 +9,7 @@
 # vanno direttamente su /data (cartella incompleti disattivata in qBittorrent).
 
 x-common: &common
-  restart: unless-stopped
+  restart: on-failure  # non unless-stopped: il servizio podman li avvierebbe al boot prima del mount
   networks: [seedbox]
   extra_hosts:
     - "host.containers.internal:host-gateway"
@@ -26,7 +26,7 @@ services:
   qbittorrent:
     image: lscr.io/linuxserver/qbittorrent:latest
     container_name: qbittorrent
-    restart: unless-stopped
+    restart: on-failure
     network_mode: host
     environment:
       <<: *lsio-env

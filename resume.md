@@ -95,6 +95,12 @@ Appunti per riprendere il lavoro. Dettagli tecnici in `README.md` e `jellyfin/RE
 - I log in /var/log ruotano con logrotate (`etc/logrotate-seedbox`, anche ogni ora oltre 100 MB):
   rclone in INFO scrive centinaia di righe al secondo ("queuing for upload") perché l'I/O POSIX
   di qBittorrent apre e chiude i file a ogni scrittura.
+- Il servizio `podman` di Alpine avvia al boot i container `unless-stopped`: le app su /data
+  hanno `restart: on-failure`, podman parte dopo `rclone-b2` (`rc_after`) e la cartella /data
+  sotto il mount è immutabile (`chattr +i`). Il 2026-10-18 qBittorrent aveva riempito il disco
+  di sistema scrivendo lì prima del mount.
+- Tailscale va in modalità iptables (`firewall_mode` in /etc/conf.d/tailscale): in nftables
+  rende la tabella nat illeggibile per netavark e i container non partono.
 - La busybox `cp -a` non preserva i file sparsi; l'awk di busybox va in overflow con
   `%d` oltre 2^31 (usare `%.0f`); risposte grandi (es. `vfs/queue`) vanno passate a jq
   da file, non come argomento.
