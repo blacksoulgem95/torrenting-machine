@@ -68,6 +68,18 @@ services:
       - ./status/www:/www:ro
       - /var/lib/seedbox/status:/www/data:ro
 
+  # Dashboard casa.local: link a tutti i servizi, con il loro stato
+  # (data/services.json, scritto da seedbox-status) e quello di B2.
+  home:
+    <<: *common
+    image: docker.io/library/busybox:1.37.0
+    container_name: home
+    command: ["httpd", "-f", "-p", "8080", "-h", "/www"]
+    read_only: true
+    volumes:
+      - ./home/www:/www:ro
+      - /var/lib/seedbox/status:/www/data:ro
+
 networks:
   seedbox:
     name: seedbox

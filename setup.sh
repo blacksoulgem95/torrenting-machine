@@ -158,6 +158,9 @@ else
 fi
 
 mkdir -p /var/lib/seedbox/status
+# link di Jellyfin per la dashboard casa.local (il nome dell'app Fly non sta nel repo)
+app=$(sed -n 's/^FLY_APP=//p' jellyfin/.env 2>/dev/null | tr -d '"')
+[ -n "$app" ] && jq -n --arg u "https://$app.fly.dev" '{jellyfin: $u}' > /var/lib/seedbox/status/links.json
 
 echo "==> Immagini"
 docker compose pull

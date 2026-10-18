@@ -99,6 +99,29 @@ up_rate() {
 		else printf "%.0f", (b - a) / dt}'
 }
 
+# raggiungibilità dei servizi attraverso NPM, per la dashboard casa.local (ogni 10s,
+# in un ciclo a parte: un servizio bloccato non deve rallentare status.json).
+# Jellyfin su Fly non si controlla: una richiesta risveglierebbe la macchina sospesa.
+DOMAIN="$(sed -n 's/^BASE_DOMAIN=//p' "$ENV_FILE" | tr -d '"')"
+SERVICES="qbit prowlarr sonarr radarr lidarr readarr bazarr seerr fm rclone npm"
+services_loop() {
+	while :; do
+		for s in $SERVICES; do
+			code=$(curl -s -o /dev/null --max-time 5 -w '%{http_code}' -H "Host: $s.${DOMAIN:-casa.local}" http://127.0.0.1/)
+			echo "$s $code" > "$WORK/svc.$s" &
+		done
+		wait
+		cat "$WORK"/svc.* | jq -Rn --arg t "$(date -Iseconds)" '{checked: $t, services: ([inputs | split(" ")
+			| {key: .[0], value: {code: (.[1] | tonumber? // 0),
+				up: ((.[1] | tonumber? // 0) as $c | $c >= 200 and $c < 500)}}] | from_entries)}' \
+			> "$STATUS_DIR/services.json.tmp" && mv "$STATUS_DIR/services.json.tmp" "$STATUS_DIR/services.json"
+		chmod 644 "$STATUS_DIR/services.json" 2>/dev/null
+		sleep 10
+	done
+}
+services_loop & svc_pid=$!
+trap 'kill $svc_pid 2>/dev/null; exit 0' INT TERM
+
 prev_cpu=$(cpu_counters) h_cpu=$prev_cpu
 prev_io=$(disk_counters "$DATA_DISK") h_io=$prev_io
 prev_up="" h_up="" prev_t=$(uptime_s) h_t=$prev_t

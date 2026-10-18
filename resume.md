@@ -24,7 +24,8 @@ Appunti per riprendere il lavoro. Dettagli tecnici in `README.md` e `jellyfin/RE
   e riavvia solo quelli che ha fermato sopra 4 GB.
 - **App** (`*.casa.local` via Nginx Proxy Manager, creati da `scripts/npm-provision.sh`):
   qbittorrent/qbit, prowlarr, sonarr, radarr, lidarr, bazarr, seerr/overseerr,
-  fm (File Browser), rclone (pagina di stato), npm. Readarr: solo con
+  fm (File Browser), rclone (pagina di stato), npm; `casa.local` è la dashboard con i link
+  e lo stato dei servizi (`home/www`, container `home` nello stack core). Readarr: solo con
   `COMPOSE_PROFILES=readarr`. FlareSolverr rimosso: i siti che bloccano l'IP della VPN
   non li risolveva comunque.
 - **Pagina di stato** `rclone.casa.local`: `scripts/rclone-status.sh` (servizio

@@ -17,7 +17,8 @@ HOST_GW=${HOST_GW:-10.89.0.1}
 
 # dominio(i) | host di destinazione | porta
 HOSTS="
-$D npm.$D|127.0.0.1|81
+npm.$D|127.0.0.1|81
+$D|home|8080
 qbittorrent.$D qbit.$D|$HOST_GW|8080
 prowlarr.$D|prowlarr|9696
 sonarr.$D|sonarr|8989
@@ -43,11 +44,12 @@ token=$(jq -n --arg i "$NPM_ADMIN_EMAIL" --arg s "$NPM_ADMIN_PASSWORD" '{identit
 [ -n "$token" ] && [ "$token" != null ] || { echo "Login NPM fallito" >&2; exit 1; }
 auth="Authorization: Bearer $token"
 
-existing=$(curl -fsS "$API/nginx/proxy-hosts" -H "$auth")
 
 echo "$HOSTS" | while IFS='|' read -r domains host port; do
 	[ -n "$domains" ] || continue
 	first=${domains%% *}
+	# riletti a ogni voce: quella prima può aver appena tolto un dominio a un host
+	existing=$(curl -fsS "$API/nginx/proxy-hosts" -H "$auth")
 	cur=$(printf '%s' "$existing" | jq -c --arg f "$first" \
 		'[.[] | select(.domain_names | index($f))][0] // empty')
 	if [ -n "$cur" ]; then

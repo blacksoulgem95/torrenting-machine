@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Casa</title>
+<meta name="color-scheme" content="dark">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Old+Standard+TT:ital,wght@0,400;0,700;1,400&display=swap">
+<style>
+	/* Stesso tema di jellyfin/jellyfin.css: la soffitta di Raskol'nikov */
+	:root {
+		--rk-soot: #110e0a;
+		--rk-wood-dark: #1c1610;
+		--rk-wood: #2a2118;
+		--rk-wood-light: #3b2f23;
+		--rk-blanket: #6b6455;
+		--rk-wallpaper: #b8994f;
+		--rk-wallpaper-dim: #8a7136;
+		--rk-paper: #e4d9bd;
+		--rk-paper-2: rgba(228, 217, 189, 0.66);
+		--rk-window: #b4bfc3;
+		--rk-blood: #a8443a;
+		--rk-divider: rgba(184, 153, 79, 0.16);
+		--rk-font-text: "EB Garamond", Georgia, "Times New Roman", serif;
+		--rk-font-title: "Old Standard TT", "EB Garamond", Georgia, serif;
+		scrollbar-color: var(--rk-wallpaper-dim) var(--rk-soot);
+	}
+	* { box-sizing: border-box; }
+	::selection { background: rgba(184, 153, 79, 0.45); color: #fff8e6; }
+	html { font-size: 104%; }
+	body {
+		margin: 0; min-height: 100vh;
+		font-family: var(--rk-font-text); color: var(--rk-paper);
+		background-color: var(--rk-soot);
+		background-image:
+			radial-gradient(ellipse 70% 55% at 68% 18%, rgba(180, 191, 195, 0.07), transparent 70%),
+			radial-gradient(ellipse at center, transparent 35%, rgba(0, 0, 0, 0.75) 100%),
+			repeating-linear-gradient(90deg,
+				rgba(184, 153, 79, 0.035) 0 2px,
+				transparent 2px 46px,
+				rgba(184, 153, 79, 0.02) 46px 48px,
+				transparent 48px 92px),
+			linear-gradient(180deg, #19140d 0%, var(--rk-soot) 60%, #0c0a07 100%);
+		background-attachment: fixed;
+	}
+	/* grana di pellicola */
+	body::after {
+		content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 10;
+		opacity: 0.07; mix-blend-mode: overlay;
+		background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.9  0 0 0 0 0.85  0 0 0 0 0.7  0 0 0 1 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+	}
+	main { max-width: 1080px; margin: 0 auto; padding: 56px 16px 72px; }
+
+	/* frontespizio */
+	header { text-align: center; margin-bottom: 48px; }
+	.eyebrow { font-variant: small-caps; letter-spacing: 0.18em; color: var(--rk-wallpaper); font-size: 0.95rem; }
+	h1 {
+		font-family: var(--rk-font-title); font-weight: 400; letter-spacing: 0.04em;
+		font-size: clamp(2.6rem, 7vw, 4rem); margin: 6px 0 0; line-height: 1.05;
+		text-shadow: 0 2px 18px rgba(0, 0, 0, 0.8);
+	}
+	h1 .ru { display: block; font-style: italic; font-size: 0.42em; color: var(--rk-paper-2); letter-spacing: 0.08em; margin-top: 8px; }
+	.rule { width: 220px; max-width: 60%; margin: 22px auto; border: 0; height: 1px;
+		background: linear-gradient(90deg, transparent, var(--rk-wallpaper-dim), transparent); }
+	.epigraph { font-style: italic; color: var(--rk-paper-2); max-width: 560px; margin: 0 auto; line-height: 1.5; }
+	.epigraph cite { display: block; font-style: normal; font-variant: small-caps; letter-spacing: 0.1em; font-size: 0.85rem; margin-top: 6px; color: var(--rk-wallpaper-dim); }
+
+	/* registro: lo stato della casa in una riga */
+	.ledger {
+		display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+		border-top: 1px solid var(--rk-divider); border-bottom: 1px solid var(--rk-divider);
+		margin: 0 0 48px;
+	}
+	.ledger div { padding: 14px 12px; text-align: center; }
+	.ledger div + div { border-left: 1px solid var(--rk-divider); }
+	.ledger dt { font-variant: small-caps; letter-spacing: 0.1em; font-size: 0.85rem; color: var(--rk-paper-2); }
+	.ledger dd { margin: 4px 0 0; font-family: var(--rk-font-title); font-size: 1.35rem; font-variant-numeric: tabular-nums; }
+	.ledger dd small { font-family: var(--rk-font-text); font-size: 0.85rem; color: var(--rk-paper-2); }
+	@media (max-width: 640px) { .ledger div + div { border-left: 0; } .ledger div { border-bottom: 1px solid var(--rk-divider); } }
+
+	/* parti */
+	section { margin-bottom: 44px; }
+	h2 {
+		font-family: var(--rk-font-title); font-weight: 400; font-variant: small-caps;
+		letter-spacing: 0.08em; font-size: 1.35rem; margin: 0 0 16px; padding-bottom: 6px;
+		border-bottom: 1px solid var(--rk-divider); display: flex; align-items: baseline; gap: 12px;
+	}
+	h2 .num { color: var(--rk-wallpaper); font-size: 0.9em; }
+	h2 .ru { margin-left: auto; font-variant: normal; font-style: italic; font-size: 0.8rem; color: var(--rk-wallpaper-dim); letter-spacing: 0.04em; }
+	.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; }
+
+	/* schede: vecchie pagine che si scaldano alla luce */
+	.card {
+		position: relative; display: flex; flex-direction: column; gap: 6px;
+		padding: 18px 18px 14px; min-height: 150px;
+		color: inherit; text-decoration: none;
+		background: linear-gradient(180deg, rgba(42, 33, 24, 0.92), rgba(28, 22, 16, 0.92));
+		border-radius: 2px;
+		box-shadow: 0 0 0 1px rgba(184, 153, 79, 0.14), 0 10px 22px rgba(0, 0, 0, 0.6);
+		transition: box-shadow 0.45s ease, transform 0.45s ease, background 0.45s ease;
+	}
+	.card:hover, .card:focus-visible {
+		box-shadow: 0 0 0 1px rgba(184, 153, 79, 0.5), 0 14px 30px rgba(0, 0, 0, 0.7);
+		transform: translateY(-2px);
+		background: linear-gradient(180deg, rgba(59, 47, 35, 0.95), rgba(28, 22, 16, 0.95));
+		outline: none;
+	}
+	.card:focus-visible { box-shadow: 0 0 0 2px var(--rk-wallpaper), 0 14px 30px rgba(0, 0, 0, 0.7); }
+	.card .name { font-family: var(--rk-font-title); font-size: 1.3rem; letter-spacing: 0.02em; }
+	.card .desc { font-style: italic; color: var(--rk-paper-2); line-height: 1.35; flex: 1; }
+	.card .foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;
+		font-size: 0.85rem; padding-top: 8px; border-top: 1px dotted var(--rk-divider); }
+	.card .host { font-variant: small-caps; letter-spacing: 0.06em; color: var(--rk-wallpaper-dim); word-break: break-all; }
+	.state { display: inline-flex; align-items: center; gap: 6px; color: var(--rk-paper-2); white-space: nowrap; }
+	.state::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--dot, var(--rk-blanket)); box-shadow: 0 0 6px var(--dot, transparent); }
+	.state.up { --dot: var(--rk-wallpaper); color: var(--rk-paper); }
+	.state.down { --dot: var(--rk-blood); color: #d9a097; }
+	.state.away { --dot: var(--rk-window); }
+	.card.down .name { color: var(--rk-paper-2); }
+
+	footer { text-align: center; color: var(--rk-paper-2); font-size: 0.9rem; font-style: italic; }
+	@media (prefers-reduced-motion: reduce) { .card { transition: none; } .card:hover { transform: none; } }
+</style>
+</head>
+<body>
+<main>
+	<header>
+		<div class="eyebrow" id="domain">casa.local</div>
+		<h1>Casa <span class="ru" lang="ru">Дом в Столярном переулке</span></h1>
+		<hr class="rule">
+		<p class="epigraph" lang="ru">«Страдание и боль всегда обязательны для широкого сознания и глубокого сердца.»
+			<cite>Преступление и наказание, часть III</cite></p>
+	</header>
+
+	<dl class="ledger" aria-label="Stato della casa">
+		<div><dt>Da caricare su B2</dt><dd id="l-queue">—</dd></div>
+		<div><dt>Caricamento</dt><dd id="l-speed">—</dd></div>
+		<div><dt>Cache rclone</dt><dd id="l-cache">—</dd></div>
+		<div><dt>Disco libero</dt><dd id="l-disk">—</dd></div>
+		<div><dt>Servizi attivi</dt><dd id="l-svc">—</dd></div>
+	</dl>
+
+	<div id="parts"></div>
+
+	<footer id="foot">in attesa dello stato…</footer>
+</main>
+
+<script>
+// stato: "key" è il nome controllato da seedbox-status (data/services.json)
+const PARTS = [
+	{ num: "I", title: "Guardare", ru: "Смотреть", items: [
+		{ name: "Jellyfin", desc: "La biblioteca: film, serie, musica e libri, ovunque.", ext: "jellyfin", note: "su Fly.io" },
+		{ name: "Seerr", desc: "Chiedere un film o una serie: arriva da solo.", sub: "seerr", key: "seerr" },
+	] },
+	{ num: "II", title: "Cercare e scaricare", ru: "Искать", items: [
+		{ name: "qBittorrent", desc: "I torrent, dietro la VPN.", sub: "qbit", key: "qbit" },
+		{ name: "Prowlarr", desc: "Gli indexer, condivisi con tutte le app.", sub: "prowlarr", key: "prowlarr" },
+		{ name: "Sonarr", desc: "Serie TV: episodi nuovi e mancanti.", sub: "sonarr", key: "sonarr" },
+		{ name: "Radarr", desc: "Film.", sub: "radarr", key: "radarr" },
+		{ name: "Lidarr", desc: "Musica.", sub: "lidarr", key: "lidarr" },
+		{ name: "Readarr", desc: "Libri (opzionale, profilo readarr).", sub: "readarr", key: "readarr", optional: true },
+		{ name: "Bazarr", desc: "Sottotitoli per film e serie.", sub: "bazarr", key: "bazarr" },
+	] },
+	{ num: "III", title: "Archivio", ru: "Архив", items: [
+		{ name: "File Browser", desc: "I file su Backblaze B2, cifrati: spostare, rinominare, caricare.", sub: "fm", key: "fm" },
+		{ name: "Stato di rclone", desc: "Coda verso B2, cache, dischi e grafici dal vivo.", sub: "rclone", key: "rclone" },
+	] },
+	{ num: "IV", title: "Amministrazione", ru: "Управление", items: [
+		{ name: "Nginx Proxy Manager", desc: "I domini *.casa.local.", sub: "npm", key: "npm" },
+	] },
+];
+
+const $ = (id) => document.getElementById(id);
+const base = location.hostname || "casa.local";
+$("domain").textContent = base;
+const links = {};
+const cards = {};
+
+function el(tag, attrs = {}, ...kids) {
+	const n = document.createElement(tag);
+	for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v);
+	n.append(...kids);
+	return n;
+}
+
+function render() {
+	const parts = $("parts");
+	parts.replaceChildren(...PARTS.map((p) => el("section", {},
+		el("h2", {}, el("span", { class: "num" }, p.num), p.title, el("span", { class: "ru", lang: "ru" }, p.ru)),
+		el("div", { class: "cards" }, ...p.items.map((it) => {
+			const href = it.ext ? links[it.ext] : `${location.protocol}//${it.sub}.${base}/`;
+			const host = it.ext ? (href ? new URL(href).host : "link non configurato") : `${it.sub}.${base}`;
+			const state = el("span", { class: "state" + (it.ext ? " away" : "") }, it.ext ? it.note : "…");
+			const a = el(href ? "a" : "div", href ? { class: "card", href, ...(it.ext ? { target: "_blank", rel: "noopener" } : {}) } : { class: "card" },
+				el("span", { class: "name" }, it.name),
+				el("span", { class: "desc" }, it.desc),
+				el("span", { class: "foot" }, el("span", { class: "host" }, host), state));
+			if (it.key) cards[it.key] = { card: a, state, it };
+			return a;
+		})))));
+}
+
+function bytes(n) {
+	if (n == null) return "—";
+	const u = ["B", "KB", "MB", "GB", "TB"]; let i = 0;
+	while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+	return (i ? n.toFixed(n < 10 ? 1 : 0) : n) + " " + u[i];
+}
+function set(id, main, small) {
+	$(id).replaceChildren(main, ...(small ? [" ", el("small", {}, small)] : []));
+}
+
+async function getJSON(path) {
+	const r = await fetch(path + "?t=" + Date.now(), { cache: "no-store" });
+	if (!r.ok) throw new Error(r.status);
+	return r.json();
+}
+
+async function refresh() {
+	try {
+		const svc = (await getJSON("data/services.json")).services || {};
+		let up = 0, total = 0;
+		for (const [key, c] of Object.entries(cards)) {
+			const s = svc[key];
+			const isUp = !!(s && s.up);
+			const off = !isUp && c.it.optional;
+			if (!off) { total++; if (isUp) up++; }
+			c.state.className = "state " + (isUp ? "up" : off ? "" : "down");
+			c.state.textContent = isUp ? "attivo" : off ? "non attivo" : "non risponde";
+			c.card.classList.toggle("down", !isUp);
+		}
+		set("l-svc", `${up}/${total}`);
+	} catch (e) { /* senza services.json restano i puntini neutri */ }
+
+	try {
+		const s = await getJSON("data/status.json");
+		const u = s.upload, c = s.cache, d = s.data_disk;
+		if (u) {
+			set("l-queue", String(u.queued_files + u.uploading_files), "file · " + bytes(u.queued_bytes + u.uploading_bytes));
+			set("l-speed", bytes(s.system.upload_rate), "/s");
+		}
+		if (c) set("l-cache", bytes(c.used), "di " + bytes(c.max));
+		if (d) set("l-disk", bytes(d.free), "di " + bytes(d.size));
+		$("foot").textContent = "Aggiornato alle " + new Date(s.updated).toLocaleTimeString("it-IT")
+			+ (s.b2_mounted ? " · B2 montato" : " · B2 non montato");
+	} catch (e) {
+		$("foot").textContent = "Stato non disponibile: il servizio seedbox-status è attivo?";
+	}
+}
+
+(async () => {
+	try { Object.assign(links, await getJSON("data/links.json")); } catch (e) { /* Jellyfin senza link */ }
+	render();
+	refresh();
+	setInterval(() => { if (!document.hidden) refresh(); }, 10000);
+	document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
+})();
+</script>
+</body>
+</html>
