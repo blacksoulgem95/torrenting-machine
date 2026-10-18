@@ -1,0 +1,24 @@
+#!/sbin/openrc-run
+# Rinnova il port forwarding NAT-PMP di ProtonVPN e lo imposta in qBittorrent.
+
+name="Seedbox NAT-PMP"
+description="ProtonVPN NAT-PMP port forwarding per qBittorrent"
+
+: "${SEEDBOX_DIR:=/home/seedbox/infra}"
+
+supervisor=supervise-daemon
+command="$SEEDBOX_DIR/scripts/natpmp-loop.sh"
+command_user="seedbox:seedbox"
+output_log="/var/log/seedbox-natpmp.log"
+error_log="/var/log/seedbox-natpmp.log"
+respawn_delay=10
+respawn_max=0
+
+depend() {
+	need net wg-quick.wg0
+	after seedbox
+}
+
+start_pre() {
+	checkpath -f -o "$command_user" -m 0644 "$output_log"
+}

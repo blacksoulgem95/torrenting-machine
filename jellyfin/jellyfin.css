@@ -1,0 +1,326 @@
+/* ==========================================================================
+   «Преступление и наказание» — tema Jellyfin ispirato a Delitto e castigo
+
+   La soffitta di Raskol'nikov: carta da parati giallo malato, legno annerito,
+   coperte grigio-brune, la luce fredda e livida di Pietroburgo dalla finestra
+   e, appena accennato, il rosso secco del delitto.
+
+   Uso: Dashboard → Generale/Branding → «Custom CSS» (tutto il server), oppure
+   Impostazioni → Display (solo per un utente). Vale per i client basati su
+   Jellyfin Web. Verificato sui selettori di Jellyfin 12.1.
+   ========================================================================== */
+
+/* Old Standard TT riprende i caratteri da stampa russi di fine Ottocento;
+   EB Garamond per il testo. Entrambi hanno il cirillico. */
+@import url("https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Old+Standard+TT:ital,wght@0,400;0,700;1,400&display=swap");
+
+/* --------------------------------------------------------------------------
+   Palette: le variabili MUI di Jellyfin 12 stanno su [data-theme="…"];
+   :root[data-theme] ha specificità maggiore e vale per qualunque tema scelto.
+   -------------------------------------------------------------------------- */
+:root,
+:root[data-theme] {
+	/* materia della stanza */
+	--rk-soot: #110e0a;          /* angoli bui */
+	--rk-wood-dark: #1c1610;     /* pavimento annerito */
+	--rk-wood: #2a2118;          /* comò */
+	--rk-wood-light: #3b2f23;
+	--rk-blanket: #6b6455;       /* coperta grigia */
+	--rk-wallpaper: #b8994f;     /* carta da parati giallastra */
+	--rk-wallpaper-dim: #8a7136;
+	--rk-paper: #e4d9bd;         /* pagine ingiallite */
+	--rk-window: #b4bfc3;        /* luce fredda dalla finestra */
+	--rk-blood: #8c2a22;         /* il delitto, usato con parsimonia */
+	--rk-font-text: "EB Garamond", Georgia, "Times New Roman", serif;
+	--rk-font-title: "Old Standard TT", "EB Garamond", Georgia, serif;
+
+	/* mappatura sul tema Jellyfin */
+	--jf-palette-background-default: var(--rk-soot);
+	--jf-palette-background-paper: var(--rk-wood-dark);
+	--jf-palette-background-paperChannel: 28 22 16;
+	--jf-palette-background-defaultImage:
+		radial-gradient(ellipse 70% 55% at 68% 18%, rgba(180, 191, 195, 0.07), transparent 70%),
+		radial-gradient(ellipse at center, transparent 35%, rgba(0, 0, 0, 0.75) 100%),
+		repeating-linear-gradient(90deg,
+			rgba(184, 153, 79, 0.035) 0 2px,
+			transparent 2px 46px,
+			rgba(184, 153, 79, 0.02) 46px 48px,
+			transparent 48px 92px),
+		linear-gradient(180deg, #19140d 0%, var(--rk-soot) 60%, #0c0a07 100%);
+
+	--jf-palette-AppBar-defaultBg: var(--rk-wood-dark);
+	--jf-palette-AppBar-gradient: linear-gradient(180deg, #1f1912 0%, #15110c 100%);
+	--jf-palette-AppBar-transparentBg: rgba(17, 14, 10, 0.55);
+
+	--jf-palette-primary-main: var(--rk-wallpaper);
+	--jf-palette-primary-mainChannel: 184 153 79;
+	--jf-palette-primary-dark: var(--rk-wallpaper-dim);
+	--jf-palette-primary-contrastText: #15110b;
+	--jf-palette-secondary-main: var(--rk-window);
+	--jf-palette-secondary-contrastText: #101214;
+
+	--jf-palette-text-primary: var(--rk-paper);
+	--jf-palette-text-secondary: rgba(228, 217, 189, 0.64);
+	--jf-palette-divider: rgba(184, 153, 79, 0.16);
+	--jf-palette-common-white: var(--rk-paper);
+
+	--jf-palette-action-hover: rgba(184, 153, 79, 0.08);
+	--jf-palette-action-focus: rgba(184, 153, 79, 0.15);
+	--jf-palette-action-selectedOpacity: 0.18;
+
+	--jf-palette-Button-inheritContainedBg: var(--rk-wood);
+	--jf-palette-Button-inheritContainedHoverBg: var(--rk-wood-light);
+	--jf-palette-FilledInput-bg: rgba(228, 217, 189, 0.05);
+	--jf-palette-FilledInput-borderColor: rgba(184, 153, 79, 0.22);
+	--jf-palette-SnackbarContent-bg: var(--rk-wood);
+	--jf-palette-SnackbarContent-color: var(--rk-paper);
+
+	--jf-palette-error-main: var(--rk-blood);
+	--jf-palette-error-light: #a8443a;
+	--jf-palette-error-contrastText: var(--rk-paper);
+	--jf-palette-Alert-infoFilledBg: var(--rk-wood);
+	--jf-palette-Alert-infoFilledColor: var(--rk-paper);
+
+	--jf-card-borderRadius: 2px;
+
+	scrollbar-color: var(--rk-wallpaper-dim) var(--rk-soot);
+}
+
+::selection {
+	background: rgba(184, 153, 79, 0.45);
+	color: #fff8e6;
+}
+
+/* --------------------------------------------------------------------------
+   Tipografia: testo da libro, titoli da frontespizio
+   -------------------------------------------------------------------------- */
+html,
+body,
+button,
+input,
+select,
+textarea,
+[class*="Mui"]:not(.material-icons):not([class*="material-icons"]) {
+	font-family: var(--rk-font-text) !important;
+}
+
+html {
+	font-size: 104%;          /* le serif hanno occhio piccolo */
+	color: var(--rk-paper);
+}
+
+h1, h2, h3,
+.pageTitle,
+.sectionTitle,
+.itemName,
+.MuiTypography-h1, .MuiTypography-h2, .MuiTypography-h3,
+.MuiTypography-h4, .MuiTypography-h5, .MuiTypography-h6 {
+	font-family: var(--rk-font-title) !important;
+	font-weight: 400;
+	letter-spacing: 0.02em;
+	color: var(--rk-paper);
+}
+
+.sectionTitle {
+	font-variant: small-caps;
+	letter-spacing: 0.08em;
+	border-bottom: 1px solid var(--jf-palette-divider);
+	padding-bottom: 0.2em;
+}
+
+.itemName {
+	text-shadow: 0 2px 12px rgba(0, 0, 0, 0.8);
+}
+
+.itemMiscInfo,
+.cardText-secondary,
+.secondaryText {
+	font-style: italic;
+}
+
+/* --------------------------------------------------------------------------
+   Grana di pellicola e vignettatura (spente durante la riproduzione video)
+   -------------------------------------------------------------------------- */
+body:not(:has(video))::after {
+	content: "";
+	position: fixed;
+	inset: 0;
+	pointer-events: none;
+	z-index: 9999;
+	opacity: 0.07;
+	mix-blend-mode: overlay;
+	background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.9  0 0 0 0 0.85  0 0 0 0 0.7  0 0 0 1 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+
+/* --------------------------------------------------------------------------
+   Barra superiore e menu laterale: legno scuro
+   -------------------------------------------------------------------------- */
+.skinHeader {
+	color: var(--rk-paper);
+}
+
+.skinHeader-withBackground,
+.detailRibbon {
+	border-bottom: 1px solid var(--jf-palette-divider);
+	box-shadow: 0 6px 24px rgba(0, 0, 0, 0.55);
+}
+
+.mainDrawer {
+	background:
+		linear-gradient(90deg, rgba(0, 0, 0, 0.35), transparent 30%),
+		var(--rk-wood-dark) !important;
+	border-right: 1px solid var(--jf-palette-divider);
+}
+
+.navMenuOption:hover,
+.navMenuOption:focus {
+	background: var(--jf-palette-action-hover);
+	color: var(--rk-wallpaper);
+}
+
+/* --------------------------------------------------------------------------
+   Copertine: vecchie fotografie che si scaldano alla luce
+   -------------------------------------------------------------------------- */
+.cardImageContainer,
+.itemDetailImage {
+	filter: sepia(0.28) saturate(0.72) contrast(1.06) brightness(0.88);
+	transition: filter 0.45s ease, transform 0.45s ease;
+}
+
+.cardBox:hover .cardImageContainer,
+.cardBox:focus-within .cardImageContainer {
+	filter: sepia(0) saturate(1) contrast(1) brightness(1);
+}
+
+.cardBox:not(.visualCardBox) .cardScalable {
+	box-shadow:
+		0 0 0 1px rgba(184, 153, 79, 0.14),
+		0 10px 22px rgba(0, 0, 0, 0.6);
+	transition: box-shadow 0.45s ease;
+}
+
+.cardBox:hover .cardScalable,
+.cardBox:focus-within .cardScalable {
+	box-shadow:
+		0 0 0 1px rgba(184, 153, 79, 0.5),
+		0 14px 30px rgba(0, 0, 0, 0.7);
+}
+
+.cardBox:not(.visualCardBox) .cardPadder,
+.visualCardBox,
+.paperList {
+	background-color: var(--rk-wood-dark);
+}
+
+.cardText {
+	color: var(--rk-paper);
+}
+
+/* indicatori: visto = ocra, contatori = carta, avanzamento = rosso secco */
+.playedIndicator,
+.countIndicator {
+	background: var(--rk-wallpaper) !important;
+	color: #15110b !important;
+	box-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+}
+
+.itemProgressBarForeground {
+	background-color: var(--rk-blood) !important;
+}
+
+.itemProgressBar {
+	background: rgba(17, 14, 10, 0.7) !important;
+}
+
+.mdl-slider-background-lower {
+	background-color: var(--rk-blood) !important;
+}
+
+/* --------------------------------------------------------------------------
+   Sfondi dei titoli: fotografie spente, come viste in una stanza senza luce
+   -------------------------------------------------------------------------- */
+.backdropImage {
+	filter: sepia(0.45) saturate(0.5) contrast(1.1) brightness(0.42);
+}
+
+.backgroundContainer.withBackdrop {
+	opacity: 0.9;
+	background-image:
+		radial-gradient(ellipse at center, transparent 30%, rgba(0, 0, 0, 0.8) 100%),
+		linear-gradient(180deg, rgba(17, 14, 10, 0.3), var(--rk-soot) 95%);
+}
+
+.itemBackdrop {
+	filter: sepia(0.35) saturate(0.6) brightness(0.6);
+}
+
+/* --------------------------------------------------------------------------
+   Pulsanti, campi, dialoghi
+   -------------------------------------------------------------------------- */
+.button-submit {
+	font-family: var(--rk-font-title) !important;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.25);
+}
+
+.raised,
+.fab {
+	border: 1px solid rgba(184, 153, 79, 0.12);
+}
+
+.emby-input,
+.emby-textarea,
+.emby-select-withcolor {
+	border-radius: 2px;
+	color: var(--rk-paper);
+}
+
+.emby-input:focus,
+.emby-textarea:focus,
+.emby-select-withcolor:focus {
+	border-color: var(--rk-wallpaper) !important;
+	box-shadow: 0 0 0 3px rgba(184, 153, 79, 0.15);
+}
+
+.dialog,
+.formDialogHeader:not(.formDialogHeader-clear),
+.formDialogFooter:not(.formDialogFooter-clear),
+.collapseContent {
+	background-color: var(--rk-wood-dark) !important;
+}
+
+.dialog {
+	border: 1px solid var(--jf-palette-divider);
+	box-shadow: 0 24px 60px rgba(0, 0, 0, 0.8);
+}
+
+.toast {
+	border-left: 3px solid var(--rk-wallpaper);
+	font-style: italic;
+}
+
+.button-delete {
+	background: var(--rk-blood) !important;
+}
+
+/* --------------------------------------------------------------------------
+   Accessibilità
+   -------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+	.cardImageContainer,
+	.itemDetailImage,
+	.cardBox .cardScalable {
+		transition: none;
+	}
+}
+
+/* sui televisori niente grana e niente filtri: costano GPU */
+.layout-tv body::after {
+	display: none;
+}
+
+.layout-tv .cardImageContainer,
+.layout-tv .backdropImage {
+	filter: none;
+}

@@ -1,0 +1,9 @@
+# segreti: stanno nel password manager
+.env
+*.env
+!.env.example
+**/.env
+!**/.env.example
+
+# dati e database delle app (contengono anche hash di password e token)
+config/

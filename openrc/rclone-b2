@@ -1,0 +1,108 @@
+#!/sbin/openrc-run
+# Monta il bucket Backblaze B2 (API S3) su $DATA_ROOT con rclone.
+# Credenziali e opzioni in $SEEDBOX_DIR/.env (B2_*, RCLONE_*).
+
+name="Backblaze B2 mount"
+description="rclone mount del bucket B2 usato come /data dalla seedbox"
+
+: "${SEEDBOX_DIR:=/home/seedbox/infra}"
+
+RCLONE_CONF=/etc/rclone/seedbox-b2.conf
+supervisor=supervise-daemon
+command=/usr/bin/rclone
+respawn_delay=10
+respawn_max=0
+
+# variabili da .env (servono anche per command_args)
+if [ -r "$SEEDBOX_DIR/.env" ]; then
+	set -a; . "$SEEDBOX_DIR/.env"; set +a
+fi
+: "${DATA_ROOT:=/data}" "${RCLONE_CACHE_DIR:=/var/cache/rclone}" "${RCLONE_CACHE_SIZE:=4G}"
+
+# b2crypt: = b2:$B2_BUCKET/$B2_PATH cifrato (nomi e contenuti) con rclone crypt
+command_args="mount b2crypt: ${DATA_ROOT}
+	--config $RCLONE_CONF
+	--allow-other --uid ${PUID:-1000} --gid ${PGID:-1000} --umask 002
+	--vfs-cache-mode full
+	--vfs-cache-max-size $RCLONE_CACHE_SIZE --vfs-cache-max-age 72h
+	--vfs-write-back 10s --vfs-fast-fingerprint
+	--cache-dir $RCLONE_CACHE_DIR
+	--dir-cache-time 10m --poll-interval 0
+	--buffer-size 8M --vfs-read-chunk-size 16M
+	--transfers 4 --s3-chunk-size 16M --s3-upload-concurrency 2
+	--log-level INFO --log-file /var/log/rclone-b2.log --stats 0"
+
+depend() {
+	need net
+	after wg-quick.wg0
+	before seedbox
+}
+
+start_pre() {
+	# senza chiavi di cifratura non si monta: niente scritture in chiaro su B2
+	for v in B2_KEY_ID B2_APP_KEY B2_BUCKET B2_ENDPOINT B2_REGION \
+		B2_CRYPT_PASSWORD B2_CRYPT_PASSWORD2; do
+		eval "[ -n \"\$$v\" ]" || { eerror "$v non impostato in $SEEDBOX_DIR/.env"; return 1; }
+	done
+
+	modprobe fuse 2>/dev/null || true
+	# propagazione verso i container (bind /data:rslave in compose.yaml)
+	mount --make-rshared /
+
+	checkpath -d -m 0700 /etc/rclone
+	(umask 077; cat > "$RCLONE_CONF" <<-EOF
+	[b2]
+	type = s3
+	provider = Other
+	access_key_id = $B2_KEY_ID
+	secret_access_key = $B2_APP_KEY
+	endpoint = https://${B2_ENDPOINT#https://}
+	region = $B2_REGION
+	acl = private
+	no_check_bucket = true
+
+	[b2crypt]
+	type = crypt
+	remote = b2:${B2_BUCKET}/${B2_PATH}
+	filename_encryption = standard
+	directory_name_encryption = true
+	password = $(printf %s "$B2_CRYPT_PASSWORD" | rclone obscure -)
+	password2 = $(printf %s "$B2_CRYPT_PASSWORD2" | rclone obscure -)
+	EOF
+	)
+
+	checkpath -d -m 0700 "$RCLONE_CACHE_DIR"
+	mountpoint -q "$DATA_ROOT" && umount -l "$DATA_ROOT"
+	checkpath -d -m 0775 -o "${PUID:-1000}:${PGID:-1000}" "$DATA_ROOT"
+	# rclone non monta su una directory non vuota: rimuovo solo cartelle vuote
+	find "$DATA_ROOT" -mindepth 1 -depth -type d -empty -delete
+	if [ -n "$(ls -A "$DATA_ROOT")" ]; then
+		eerror "$DATA_ROOT contiene file locali: spostali prima di montare B2"
+		return 1
+	fi
+
+	ebegin "Verifica accesso al bucket $B2_BUCKET"
+	rclone --config "$RCLONE_CONF" lsf --max-depth 1 "b2:$B2_BUCKET" >/dev/null
+	eend $? "Credenziali o endpoint B2 non validi" || return 1
+}
+
+start_post() {
+	local i=0
+	while ! mountpoint -q "$DATA_ROOT" && [ $i -lt 30 ]; do
+		sleep 1; i=$((i + 1))
+	done
+	mountpoint -q "$DATA_ROOT" || { eerror "mount non riuscito (vedi /var/log/rclone-b2.log)"; return 1; }
+
+	# su S3 le cartelle vuote non esistono: un .keep le rende persistenti
+	for d in torrents media; do
+		for s in tv movies music books; do
+			mkdir -p "$DATA_ROOT/$d/$s"
+			[ -e "$DATA_ROOT/$d/$s/.keep" ] || touch "$DATA_ROOT/$d/$s/.keep"
+		done
+	done
+}
+
+stop_post() {
+	mountpoint -q "$DATA_ROOT" && umount -l "$DATA_ROOT"
+	return 0
+}

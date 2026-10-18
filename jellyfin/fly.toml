@@ -1,0 +1,41 @@
+# Jellyfin su Fly.io con la libreria letta (sola lettura) dal bucket Backblaze B2
+# della seedbox. Le chiavi B2 sono secrets Fly (vedi deploy.sh), non stanno qui.
+
+app = "<app-fly>"   # nome unico: deve coincidere con FLY_APP in .env
+primary_region = "ams"       # Amsterdam: stessa città del datacenter B2 eu-central-003
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  B2_BUCKET = "<bucket>"
+  B2_PATH = "seedbox"            # radice cifrata (rclone crypt) della seedbox
+  B2_CRYPT_SUBDIR = "media"       # sottocartella in chiaro dentro il crypt
+  B2_ENDPOINT = "s3.eu-central-003.backblazeb2.com"
+  B2_REGION = "eu-central-003"
+  RCLONE_CACHE_SIZE = "5G"
+  JELLYFIN_DATA_DIR = "/config/data"
+  JELLYFIN_CACHE_DIR = "/config/cache"
+
+[[mounts]]
+  source = "jellyfin_data"
+  destination = "/config"      # metadati, utenti, cronologia e cache rclone
+  initial_size = "10gb"
+
+[http_service]
+  internal_port = 8096
+  force_https = true
+  auto_stop_machines = "suspend"  # sospende quando non c'è traffico (solo VM <= 2GB, senza swap)
+  auto_start_machines = true      # riprende alla prima richiesta
+  min_machines_running = 0
+
+  [[http_service.checks]]
+    method = "GET"
+    path = "/health"
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "60s"
+
+[[vm]]
+  size = "shared-cpu-2x"
+  memory = "2gb"

@@ -1,0 +1,3 @@
+#!/bin/sh
+# docker compose sullo stack seedbox (socket podman rootful). Uso: doas scripts/dc ps
+cd "$(dirname "$0")/.." && DOCKER_HOST=unix:///run/podman/podman.sock exec docker compose "$@"
