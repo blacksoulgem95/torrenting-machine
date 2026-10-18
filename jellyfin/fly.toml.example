@@ -1,7 +1,9 @@
 # Jellyfin su Fly.io con la libreria letta (sola lettura) dal bucket Backblaze B2
 # della seedbox. Le chiavi B2 sono secrets Fly (vedi deploy.sh), non stanno qui.
 
-app = "<app-fly>"   # nome unico: deve coincidere con FLY_APP in .env
+# Modello: deploy.sh genera fly.toml sostituendo <app-fly> (FLY_APP in jellyfin/.env)
+# e <bucket> (B2_BUCKET nel .env principale). fly.toml non è nel repo.
+app = "<app-fly>"
 primary_region = "ams"       # Amsterdam: stessa città del datacenter B2 eu-central-003
 
 [build]

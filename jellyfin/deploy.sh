@@ -13,8 +13,10 @@ FLY=$(command -v fly || command -v flyctl || true)
 [ -n "${B2_KEY_ID:-}" ] && [ -n "${B2_APP_KEY:-}" ] || { echo "B2_KEY_ID/B2_APP_KEY vuoti in .env" >&2; exit 1; }
 : "${FLY_APP:?FLY_APP vuoto in .env}"
 
-grep -q "^app = \"$FLY_APP\"" fly.toml || {
-	echo "fly.toml ha un nome app diverso da FLY_APP=$FLY_APP: allineali" >&2; exit 1; }
+# fly.toml reale (non nel repo) generato dal modello: nome app da .env, bucket dal .env principale
+BUCKET=$(sed -n 's/^B2_BUCKET=//p' ../.env 2>/dev/null | tr -d '"')
+[ -n "$BUCKET" ] || { echo "B2_BUCKET mancante in ../.env" >&2; exit 1; }
+sed -e "s/<app-fly>/$FLY_APP/g" -e "s/<bucket>/$BUCKET/g" fly.toml.example > fly.toml
 
 REGION=$(sed -n 's/^primary_region = "\([a-z]*\)".*/\1/p' fly.toml)
 

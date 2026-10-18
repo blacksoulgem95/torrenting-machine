@@ -29,7 +29,8 @@ curl -L https://fly.io/install.sh | sh
 
 ## 3. Deploy
 
-1. Scegli un nome unico e mettilo sia in `fly.toml` (`app = ...`) sia in `.env` (`FLY_APP=...`).
+1. Scegli un nome unico per l'app e mettilo in `.env` (`FLY_APP=...`): `deploy.sh` genera
+   `fly.toml` da `fly.toml.example` con quel nome e con `B2_BUCKET` del `.env` principale.
 2. Lancia `./deploy.sh`. Crea app e volume se mancano, carica `B2_KEY_ID`/`B2_APP_KEY`
    come *fly secrets* (arrivano al container come env al boot, non finiscono
    nell'immagine) e fa il deploy.
