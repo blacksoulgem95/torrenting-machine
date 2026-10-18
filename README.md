@@ -91,7 +91,8 @@ Log: `/var/log/rclone-b2.log`.
   in parallelo: con 15 GB di disco tieni pochi download attivi.
 - **Niente hardlink su B2**: Sonarr/Radarr/Lidarr ripiegano sulla copia, quindi un
   file ancora in seed occupa spazio due volte (torrents + media). Imposta in qBittorrent
-  un limite di ratio/tempo di seed con rimozione, così la copia in `torrents` sparisce.
+  un limite di ratio/tempo di seed con rimozione, così la copia in `torrents` sparisce
+  (setup.sh imposta ratio 0: nessun seed, la copia sparisce subito dopo l'import).
 - **Costi**: il seeding legge da B2 a pezzi (transazioni di classe B + egress oltre la
   quota gratuita). Tieni d'occhio la pagina *Caps & Alerts* di B2.
 - Config e database delle app restano in `config/` sul disco locale (SQLite su un

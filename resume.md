@@ -76,7 +76,7 @@ Appunti per riprendere il lavoro. Dettagli tecnici in `README.md` e `jellyfin/RE
    login disclaimer «Тварь ли я дрожащая или право имею?».
 7. **Collegamenti restanti**: Bazarr → Sonarr/Radarr; Seerr → Jellyfin
    (`https://<app-fly>.fly.dev`) + Sonarr/Radarr; *arr → Connect → Jellyfin.
-8. ~~**qBittorrent**: limite di ratio/tempo di seed~~ fatto: ratio 2 o 14 giorni, poi pausa; Sonarr/Radarr rimuovono i
+8. ~~**qBittorrent**: limite di ratio/tempo di seed~~ fatto: niente seed (ratio 0, stop appena finito); Sonarr/Radarr rimuovono i
    torrent importati (su B2 niente hardlink: i file in seed occupano spazio due volte).
 9. **Backup**: chiavi di cifratura nel password manager; backup di `config/`
    (es. `rclone sync config b2crypt:backup-config` a stack fermo).

@@ -202,8 +202,10 @@ i=0
 until curl -fsS --max-time 3 http://127.0.0.1:8080/api/v2/app/version >/dev/null 2>&1; do
 	i=$((i + 1)); [ $i -lt 30 ] || break; sleep 2
 done
+# niente seed (ratio 0): il torrent si ferma appena finito, Sonarr/Radarr/Lidarr lo importano e
+# lo rimuovono; 15 download attivi, quelli fermi o lenti non occupano un posto in coda
 curl -fsS http://127.0.0.1:8080/api/v2/app/setPreferences \
-	--data-urlencode 'json={"temp_path_enabled":false,"temp_path":"/incomplete","disk_io_type":2,"file_pool_size":20,"max_ratio_enabled":true,"max_ratio":2,"max_seeding_time_enabled":true,"max_seeding_time":20160,"max_ratio_act":0}' \
+	--data-urlencode 'json={"temp_path_enabled":false,"temp_path":"/incomplete","disk_io_type":2,"file_pool_size":20,"max_ratio_enabled":true,"max_ratio":0,"max_seeding_time_enabled":true,"max_seeding_time":0,"max_ratio_act":0,"max_active_downloads":15,"max_active_torrents":40,"max_active_uploads":25,"dont_count_slow_torrents":true,"slow_torrent_dl_rate_threshold":30,"slow_torrent_ul_rate_threshold":10,"slow_torrent_inactive_timer":120}' \
 	|| echo "    impossibile aggiornare qBittorrent (impostalo a mano: Opzioni → Download)"
 
 # categoria b2: niente cartella incompleti, scrive direttamente sul mount B2
