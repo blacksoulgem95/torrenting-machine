@@ -1,0 +1,8 @@
+#!/bin/sh
+# Il traffico di Tailscale (marcato 0x80000) passa dal tunnel Proton (tabella 51820
+# di wg-quick): dalla VM non si esce su internet direttamente da eth0.
+# Installato da setup.sh in /etc/local.d (servizio OpenRC "local").
+for v in -4 -6; do
+	ip $v rule del fwmark 0x80000/0xff0000 lookup 51820 priority 5200 2>/dev/null
+	ip $v rule add fwmark 0x80000/0xff0000 lookup 51820 priority 5200
+done

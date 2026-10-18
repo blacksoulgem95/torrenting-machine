@@ -11,7 +11,7 @@ cd "$DIR"
 export DOCKER_HOST=unix:///run/podman/podman.sock
 
 echo "==> Pacchetti"
-apk add --quiet docker-cli-compose libnatpmp curl jq openssl xxd rclone fuse3 mount e2fsprogs-extra logrotate
+apk add --quiet docker-cli-compose libnatpmp curl jq openssl xxd rclone fuse3 mount e2fsprogs-extra logrotate dnsmasq tailscale
 
 echo "==> .env"
 if [ ! -f .env ]; then
@@ -206,6 +206,15 @@ curl -fsS http://127.0.0.1:8080/api/v2/torrents/createCategory \
 echo "==> Proxy host Nginx Proxy Manager (*.$BASE_DOMAIN)"
 ./scripts/npm-provision.sh
 ./scripts/abs-provision.sh
+./scripts/dns-provision.sh
+# Tailscale: va collegato una volta a mano con `doas tailscale up --accept-dns=false`
+install -m 644 etc/sysctl-tailscale.conf /etc/sysctl.d/99-tailscale.conf
+sysctl -p /etc/sysctl.d/99-tailscale.conf >/dev/null
+install -m 755 etc/tailscale-via-vpn.start /etc/local.d/tailscale-via-vpn.start
+rc-update add local default >/dev/null
+/etc/local.d/tailscale-via-vpn.start
+rc-update add tailscale default >/dev/null
+rc-service tailscale start >/dev/null 2>&1 || true
 
 cat <<EOF
 

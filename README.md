@@ -109,6 +109,19 @@ Readarr è stato ritirato upstream (2025) ed è stato sostituito da:
   librerie li crea `scripts/abs-provision.sh`; le librerie si rianalizzano ogni 6 ore
   (su FUSE il watcher dei file non funziona) o a mano da Impostazioni → Librerie.
 
+## DNS e Tailscale
+
+`dnsmasq` (configurato da `scripts/dns-provision.sh`) risponde a `casa.local` e a
+*qualsiasi* `*.casa.local` su ogni interfaccia tranne `podman1`, `wg0` e le `veth`
+dei container, sempre con l'IP Tailscale della VM (o `DNS_ADDRESS` dal `.env`). Gli altri nomi
+vanno ai DNS della VPN. Se cambia l'IP Tailscale rilancia
+`doas scripts/dns-provision.sh`.
+
+Tailscale (una volta sola): `doas tailscale up --accept-dns=false` e approva il link
+(`--accept-dns=false`: la VM continua a usare i DNS della VPN). Poi nella console
+Tailscale → DNS → Nameservers → Add nameserver → Custom: l'IP 100.x della VM con
+"Restrict to domain" = `casa.local`. Su iOS/macOS `.local` può finire su mDNS invece che sul DNS.
+
 ## Verifica
 
 ```sh
