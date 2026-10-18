@@ -120,6 +120,11 @@ start_post() {
 			[ -e "$DATA_ROOT/$d/$s/.keep" ] || touch "$DATA_ROOT/$d/$s/.keep"
 		done
 	done
+	# cartelle delle categorie manuali di qBittorrent
+	for s in anime hentai audiobooks comics videocorsi corn corn-movies; do
+		mkdir -p "$DATA_ROOT/media/$s"
+		[ -e "$DATA_ROOT/media/$s/.keep" ] || touch "$DATA_ROOT/media/$s/.keep"
+	done
 
 	# mount pronto: se lo stack seedbox è nel runlevel ma non è partito (es. il mount
 	# era fallito al boot e rclone-b2 è stato riavviato dopo), lo avvia. In background:
