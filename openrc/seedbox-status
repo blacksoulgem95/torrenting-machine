@@ -1,0 +1,23 @@
+#!/sbin/openrc-run
+# Raccoglie lo stato di cache rclone, coda verso B2 e dischi per rclone.casa.local.
+
+name="Seedbox status"
+description="Stato di cache rclone, upload verso B2 e salute dei dischi"
+
+: "${SEEDBOX_DIR:=/home/seedbox/infra}"
+
+supervisor=supervise-daemon
+command="$SEEDBOX_DIR/scripts/rclone-status.sh"
+output_log="/var/log/seedbox-status.log"
+error_log="/var/log/seedbox-status.log"
+respawn_delay=10
+respawn_max=0
+
+depend() {
+	need localmount
+	after rclone-b2
+}
+
+start_pre() {
+	checkpath -d -m 0755 /var/lib/seedbox/status
+}

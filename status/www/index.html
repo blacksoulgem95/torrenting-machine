@@ -1,0 +1,637 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>rclone · stato</title>
+<style>
+	/* palette di riferimento data-viz: slot categoriali 1-3 validati (light e dark),
+	   grigio per "libero", colori di stato riservati agli stati */
+	:root {
+		color-scheme: light;
+		--page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+		--grid: #e1e0d9; --axis: #c3c2b7; --ring: rgba(11, 11, 11, 0.10);
+		--s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --rest: #c3c2b7; --track: #e9e8e3;
+		--good: #0ca30c; --warning: #fab219; --critical: #d03b3b;
+	}
+	@media (prefers-color-scheme: dark) {
+		:root {
+			color-scheme: dark;
+			--page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
+			--grid: #2c2c2a; --axis: #383835; --ring: rgba(255, 255, 255, 0.10);
+			--s1: #3987e5; --s2: #d95926; --s3: #199e70; --rest: #4a4a47; --track: #2c2c2a;
+		}
+	}
+	* { box-sizing: border-box; }
+	body {
+		margin: 0; padding: 24px 16px 48px; background: var(--page); color: var(--ink);
+		font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+	}
+	main { max-width: 1120px; margin: 0 auto; }
+	header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 16px; }
+	h1 { font-size: 20px; margin: 0; letter-spacing: -0.01em; }
+	h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-2); margin: 0; font-weight: 600; }
+	h3 { font-size: 15px; margin: 32px 0 12px; color: var(--ink-2); font-weight: 600; }
+	.updated, .sub { color: var(--ink-2); font-size: 13px; }
+	.grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+	.grid.wide { grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); }
+	@media (max-width: 480px) { .grid.wide { grid-template-columns: 1fr; } }
+	.card { background: var(--surface); border: 1px solid var(--ring); border-radius: 10px; padding: 18px; min-width: 0; }
+	.card-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 12px; }
+	.big { font-size: 32px; font-weight: 650; letter-spacing: -0.02em; }
+	.eta { font-size: 16px; font-weight: 600; margin: 2px 0 4px; }
+	.row { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-top: 1px solid var(--grid); }
+	.row:first-of-type { border-top: 0; }
+	.row span:first-child { color: var(--ink-2); }
+	.row span:last-child { font-variant-numeric: tabular-nums; text-align: right; }
+	.bar { height: 8px; background: var(--track); border-radius: 4px; overflow: hidden; margin: 10px 0 12px; }
+	.bar > i { display: block; height: 100%; background: var(--s1); width: 0; border-radius: 4px; transition: width 0.4s ease; }
+	.bar.warning > i { background: var(--warning); }
+	.bar.critical > i { background: var(--critical); }
+	.status { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--ink); }
+	.status::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--dot); }
+	.status.good { --dot: var(--good); } .status.warning { --dot: var(--warning); } .status.critical { --dot: var(--critical); }
+	.banner { display: none; margin-bottom: 16px; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--critical); color: var(--ink); background: var(--surface); }
+	.banner::before { content: "⚠ "; color: var(--critical); }
+	.disk-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+
+	/* filtro intervallo: una riga sopra i grafici */
+	.filters { display: flex; gap: 4px; flex-wrap: wrap; margin: 28px 0 12px; align-items: center; }
+	.filters span { color: var(--ink-2); font-size: 13px; margin-right: 6px; }
+	.seg { border: 1px solid var(--ring); background: var(--surface); color: var(--ink); padding: 4px 12px; border-radius: 999px; font: inherit; font-size: 13px; cursor: pointer; }
+	.seg[aria-pressed="true"] { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+	.toggle { border: 0; background: none; color: var(--ink-2); font: inherit; font-size: 12px; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; padding: 0; }
+
+	/* file in caricamento */
+	.files { display: flex; flex-direction: column; gap: 14px; }
+	.file-name { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.file-meta { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--ink-2); font-variant-numeric: tabular-nums; flex-wrap: wrap; }
+	.file .bar { margin: 6px 0 4px; }
+	.empty { color: var(--ink-2); font-size: 14px; }
+
+	/* grafici */
+	.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--ink-2); margin-bottom: 6px; }
+	.legend .key { display: inline-flex; align-items: center; gap: 6px; }
+	.legend .key::before { content: ""; width: 14px; height: 2px; border-radius: 1px; background: var(--c); }
+	.legend .key.rect::before { width: 10px; height: 10px; border-radius: 2px; }
+	.chart { position: relative; }
+	.chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+	.chart svg:focus { outline: 2px solid var(--s1); outline-offset: 4px; border-radius: 4px; }
+	.axis-text { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+	.label-text { fill: var(--ink-2); font-size: 11px; font-weight: 600; }
+	.tooltip { position: absolute; pointer-events: none; background: var(--surface); border: 1px solid var(--ring); border-radius: 8px; padding: 8px 10px; font-size: 12px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12); min-width: 140px; display: none; z-index: 2; }
+	.tooltip .t { color: var(--muted); margin-bottom: 4px; font-variant-numeric: tabular-nums; }
+	.tooltip .r { display: flex; align-items: center; gap: 8px; justify-content: space-between; }
+	.tooltip .r b { font-weight: 650; color: var(--ink); font-variant-numeric: tabular-nums; }
+	.tooltip .r span { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-2); }
+	.tooltip .r span::before { content: ""; width: 12px; height: 2px; background: var(--c); border-radius: 1px; }
+	.donut-wrap { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
+	.donut-wrap svg { width: 160px; height: 160px; flex: none; }
+	.donut-legend { flex: 1; min-width: 160px; }
+	.donut-legend .row span:first-child { display: inline-flex; align-items: center; gap: 8px; }
+	.donut-legend .row span:first-child::before { content: ""; width: 10px; height: 10px; border-radius: 2px; background: var(--c); }
+	table.view { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 8px; }
+	table.view th, table.view td { text-align: right; padding: 4px 6px; border-top: 1px solid var(--grid); font-variant-numeric: tabular-nums; }
+	table.view th:first-child, table.view td:first-child { text-align: left; }
+	table.view th { color: var(--ink-2); font-weight: 600; }
+	[hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+	<header>
+		<h1>rclone · Backblaze B2</h1>
+		<span class="updated" id="updated">in attesa di dati…</span>
+	</header>
+	<div class="banner" id="banner"></div>
+
+	<div class="grid">
+		<section class="card">
+			<div class="card-head"><h2>Da caricare su B2</h2></div>
+			<div class="big" id="pending">—</div>
+			<div class="eta" id="pending-eta">&nbsp;</div>
+			<div class="sub" id="pending-sub">&nbsp;</div>
+			<div class="bar" id="up-bar"><i></i></div>
+			<div class="row"><span>In coda</span><span id="queued">—</span></div>
+			<div class="row"><span>In caricamento</span><span id="uploading">—</span></div>
+			<div class="row"><span>Velocità</span><span id="speed">—</span></div>
+			<div class="row"><span>Tempo stimato</span><span id="eta">—</span></div>
+			<div class="row"><span>Nuovi tentativi</span><span id="retry">—</span></div>
+		</section>
+
+		<section class="card">
+			<div class="card-head"><h2>In caricamento ora</h2></div>
+			<div class="files" id="files"><span class="empty">—</span></div>
+		</section>
+
+		<section class="card">
+			<div class="card-head"><h2>Cache rclone</h2></div>
+			<div class="big" id="cache-used">—</div>
+			<div class="sub" id="cache-sub">&nbsp;</div>
+			<div class="bar" id="cache-bar"><i></i></div>
+			<div class="row"><span>File in cache</span><span id="cache-files">—</span></div>
+			<div class="row"><span>Aperti ora</span><span id="cache-inuse">—</span></div>
+			<div class="row"><span>File con errori</span><span id="cache-err">—</span></div>
+			<div class="row"><span>Spazio esaurito</span><span id="cache-oos">—</span></div>
+			<div class="row"><span>Mount /data</span><span id="mounted">—</span></div>
+		</section>
+	</div>
+
+	<div class="filters" role="group" aria-label="Intervallo dei grafici">
+		<span>Intervallo</span>
+		<button class="seg" data-range="300">5 min</button>
+		<button class="seg" data-range="900" aria-pressed="true">15 min</button>
+		<button class="seg" data-range="3600">1 ora</button>
+	</div>
+
+	<div class="grid wide">
+		<section class="card" id="c-upload"></section>
+		<section class="card" id="c-cpu"></section>
+		<section class="card" id="c-mem"></section>
+		<section class="card" id="c-io"></section>
+		<section class="card" id="c-ram-pie"></section>
+		<section class="card" id="c-disk-pie"></section>
+	</div>
+
+	<h3>Dischi</h3>
+	<div class="grid" id="disks"></div>
+</main>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const SVG_NS = "http://www.w3.org/2000/svg";
+const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+function bytes(n, digits) {
+	if (n == null || isNaN(n)) return "—";
+	const u = ["B", "KB", "MB", "GB", "TB"];
+	let i = 0;
+	while (Math.abs(n) >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+	const d = digits != null ? digits : i === 0 ? 0 : n < 10 ? 2 : 1;
+	return n.toFixed(d) + " " + u[i];
+}
+const rate = (n) => bytes(n) + "/s";
+const pct = (n) => (n == null ? "—" : n.toFixed(n < 10 ? 1 : 0) + "%");
+
+function duration(s) {
+	if (!isFinite(s) || s <= 0) return "—";
+	const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
+	if (d) return `${d} g ${h} h`;
+	return h ? `${h} h ${m} min` : m ? `${m} min` : `${Math.ceil(s)} s`;
+}
+const hhmm = (t) => new Date(t * 1000).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
+const hhmmss = (t) => new Date(t * 1000).toLocaleTimeString("it-IT");
+
+function el(tag, attrs = {}, text) {
+	const e = document.createElement(tag);
+	for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+	if (text != null) e.textContent = text;
+	return e;
+}
+function sv(tag, attrs = {}) {
+	const e = document.createElementNS(SVG_NS, tag);
+	for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+	return e;
+}
+
+function setBar(id, ratio, warnAt = 0.85, critAt = 0.95) {
+	const b = typeof id === "string" ? $(id) : id;
+	const r = Math.max(0, Math.min(1, ratio || 0));
+	b.firstElementChild.style.width = (r * 100).toFixed(1) + "%";
+	b.className = "bar" + (r >= critAt ? " critical" : r >= warnAt ? " warning" : "");
+}
+function status(text, level) {
+	const s = el("span", { class: "status " + level }, text);
+	return s;
+}
+function setStatus(id, text, level) { $(id).replaceChildren(status(text, level)); }
+
+/* ---------- card scaffolding: titolo, legenda, area grafico, tabella ---------- */
+function cardShell(id, title, subtitle) {
+	const card = $(id);
+	if (card.dataset.ready) return card._parts;
+	card.dataset.ready = "1";
+	const head = el("div", { class: "card-head" });
+	const h = el("h2", {}, title);
+	const btn = el("button", { class: "toggle", type: "button", "aria-expanded": "false" }, "Tabella");
+	head.append(h, btn);
+	const sub = el("div", { class: "sub" }, subtitle || "");
+	const legend = el("div", { class: "legend" });
+	const chart = el("div", { class: "chart" });
+	const table = el("table", { class: "view" });
+	table.hidden = true;
+	btn.addEventListener("click", () => {
+		table.hidden = !table.hidden;
+		btn.setAttribute("aria-expanded", String(!table.hidden));
+	});
+	card.append(head, sub, legend, chart, table);
+	card._parts = { card, sub, legend, chart, table };
+	return card._parts;
+}
+
+function fillTable(table, headers, rows) {
+	const thead = el("tr");
+	headers.forEach((h) => thead.append(el("th", {}, h)));
+	const trs = rows.map((r) => { const tr = el("tr"); r.forEach((c) => tr.append(el("td", {}, c))); return tr; });
+	table.replaceChildren(thead, ...trs);
+}
+
+/* ---------- grafico a linee: 2px, griglia a filo, mirino + tooltip, etichette finali ---------- */
+function lineChart(id, opts) {
+	const { title, subtitle, series, data, fmt, yMax, area, byteAxis } = opts;
+	const p = cardShell(id, title, subtitle);
+
+	// legenda (sempre con >= 2 serie; con una sola basta il titolo)
+	p.legend.replaceChildren(...(series.length > 1 ? series.map((s) => {
+		const k = el("span", { class: "key" }, s.label); k.style.setProperty("--c", css(s.color)); return k;
+	}) : []));
+
+	const W = Math.max(280, p.chart.clientWidth || 400), H = 190;
+	const m = { l: 48, r: series.length > 1 ? 74 : 16, t: 10, b: 24 };
+	const iw = W - m.l - m.r, ih = H - m.t - m.b;
+	const svg = sv("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", tabindex: "0",
+		"aria-label": `${title}: grafico, usa le frecce per leggere i valori` });
+
+	if (data.length < 2) {
+		const t = sv("text", { x: W / 2, y: H / 2, "text-anchor": "middle", class: "axis-text" });
+		t.textContent = "raccolgo i primi campioni…";
+		svg.append(t);
+		p.chart.replaceChildren(svg);
+		return;
+	}
+
+	const t0 = data[0].t, t1 = data[data.length - 1].t;
+	let max = yMax || Math.max(...series.flatMap((s) => data.map(s.get)), 0);
+	if (!yMax) max = byteAxis ? niceMaxBytes(max) : niceMax(max);
+	const x = (t) => m.l + ((t - t0) / Math.max(1, t1 - t0)) * iw;
+	const y = (v) => m.t + ih - (Math.min(v, max) / (max || 1)) * ih;
+
+	// griglia e assi
+	for (let i = 0; i <= 4; i++) {
+		const v = (max / 4) * i, yy = y(v);
+		svg.append(sv("line", { x1: m.l, x2: m.l + iw, y1: yy, y2: yy, stroke: i === 0 ? css("--axis") : css("--grid"), "stroke-width": 1 }));
+		const lab = sv("text", { x: m.l - 6, y: yy + 4, "text-anchor": "end", class: "axis-text" });
+		lab.textContent = fmt.axis(v);
+		svg.append(lab);
+	}
+	[t0, (t0 + t1) / 2, t1].forEach((t, i) => {
+		const lab = sv("text", { x: x(t), y: H - 6, "text-anchor": ["start", "middle", "end"][i], class: "axis-text" });
+		lab.textContent = hhmm(t);
+		svg.append(lab);
+	});
+
+	// serie
+	const ends = [];
+	series.forEach((s) => {
+		const pts = data.map((d) => [x(d.t), y(s.get(d))]);
+		const dpath = "M" + pts.map((q) => q[0].toFixed(1) + "," + q[1].toFixed(1)).join("L");
+		if (area) {
+			svg.append(sv("path", { d: `${dpath}L${pts[pts.length - 1][0]},${m.t + ih}L${pts[0][0]},${m.t + ih}Z`,
+				fill: css(s.color), "fill-opacity": 0.1 }));
+		}
+		svg.append(sv("path", { d: dpath, fill: "none", stroke: css(s.color), "stroke-width": 2,
+			"stroke-linejoin": "round", "stroke-linecap": "round" }));
+		const last = pts[pts.length - 1];
+		svg.append(sv("circle", { cx: last[0], cy: last[1], r: 4, fill: css(s.color), stroke: css("--surface"), "stroke-width": 2 }));
+		ends.push({ s, y: last[1], v: s.get(data[data.length - 1]) });
+	});
+
+	// etichette dirette alla fine, solo se non si sovrappongono (altrimenti legenda + tooltip)
+	if (series.length > 1) {
+		const sorted = [...ends].sort((a, b) => a.y - b.y);
+		const fits = sorted.every((e, i) => i === 0 || e.y - sorted[i - 1].y >= 13);
+		if (fits) sorted.forEach((e) => {
+			const t = sv("text", { x: m.l + iw + 8, y: e.y + 4, class: "label-text" });
+			t.textContent = e.s.label;
+			svg.append(t);
+		});
+	} else {
+		const e = ends[0];
+		const t = sv("text", { x: m.l + iw - 2, y: Math.max(m.t + 10, e.y - 10), "text-anchor": "end", class: "label-text" });
+		t.textContent = fmt.value(e.v);
+		svg.append(t);
+	}
+
+	// mirino + tooltip (puntatore e tastiera)
+	const cross = sv("line", { y1: m.t, y2: m.t + ih, stroke: css("--axis"), "stroke-width": 1, visibility: "hidden" });
+	const hit = sv("rect", { x: m.l, y: 0, width: iw, height: H, fill: "transparent" });
+	svg.append(cross, hit);
+	const tip = el("div", { class: "tooltip" });
+	p.chart.replaceChildren(svg, tip);
+
+	let idx = data.length - 1;
+	function show(i) {
+		idx = Math.max(0, Math.min(data.length - 1, i));
+		const d = data[idx], xx = x(d.t);
+		cross.setAttribute("x1", xx); cross.setAttribute("x2", xx); cross.setAttribute("visibility", "visible");
+		const rows = series.map((s) => {
+			const r = el("div", { class: "r" });
+			const name = el("span", {}, s.label); name.style.setProperty("--c", css(s.color));
+			r.append(el("b", {}, fmt.value(s.get(d))), name);
+			return r;
+		});
+		tip.replaceChildren(el("div", { class: "t" }, hhmmss(d.t)), ...rows);
+		tip.style.display = "block";
+		const scale = p.chart.clientWidth / W;
+		const left = xx * scale;
+		tip.style.left = Math.min(left + 12, p.chart.clientWidth - tip.offsetWidth) + "px";
+		tip.style.top = "8px";
+	}
+	function hide() { cross.setAttribute("visibility", "hidden"); tip.style.display = "none"; }
+	hit.addEventListener("pointermove", (ev) => {
+		const r = svg.getBoundingClientRect();
+		const px = ((ev.clientX - r.left) / r.width) * W;
+		const t = t0 + ((px - m.l) / iw) * (t1 - t0);
+		let best = 0;
+		for (let i = 1; i < data.length; i++) if (Math.abs(data[i].t - t) < Math.abs(data[best].t - t)) best = i;
+		show(best);
+	});
+	hit.addEventListener("pointerleave", hide);
+	svg.addEventListener("focus", () => show(idx));
+	svg.addEventListener("blur", hide);
+	svg.addEventListener("keydown", (ev) => {
+		if (ev.key === "ArrowLeft") { show(idx - 1); ev.preventDefault(); }
+		if (ev.key === "ArrowRight") { show(idx + 1); ev.preventDefault(); }
+	});
+
+	// tabella: attuale / minimo / media / massimo nell'intervallo
+	fillTable(p.table, ["Serie", "Attuale", "Min", "Media", "Max"], series.map((s) => {
+		const v = data.map(s.get);
+		return [s.label, fmt.value(v[v.length - 1]), fmt.value(Math.min(...v)),
+			fmt.value(v.reduce((a, b) => a + b, 0) / v.length), fmt.value(Math.max(...v))];
+	}));
+}
+
+// massimo "tondo" per assi in byte: in unità 1024 e divisibile in 4 tacche pulite
+function niceMaxBytes(v) {
+	if (v <= 0) return 1024;
+	let unit = 1;
+	while (v / unit >= 1000) unit *= 1024;
+	const n = v / unit;
+	for (const k of [1, 2, 4, 6, 8, 10, 12, 16, 20, 40, 60, 80, 100, 200, 400, 600, 800, 1000]) if (k >= n) return k * unit;
+	return 1024 * unit;
+}
+function axisBytes(v, suffix = "") {
+	return bytes(v, 2).replace(/\.?0+ /, " ") + suffix;
+}
+
+function niceMax(v) {
+	if (v <= 0) return 1;
+	const e = Math.pow(10, Math.floor(Math.log10(v)));
+	for (const k of [1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10]) if (k * e >= v) return k * e;
+	return 10 * e;
+}
+
+/* ---------- donut: parti di un intero, max 4 segmenti, spazio di 2px tra le fette ---------- */
+function donutChart(id, opts) {
+	const { title, subtitle, segments, total, centerLabel } = opts;
+	const p = cardShell(id, title, subtitle);
+	p.legend.replaceChildren();
+	const size = 160, r = 62, sw = 22, c = size / 2;
+	const svg = sv("svg", { viewBox: `0 0 ${size} ${size}`, role: "img", "aria-label": `${title}: grafico ad anello` });
+	svg.append(sv("circle", { cx: c, cy: c, r, fill: "none", stroke: css("--track"), "stroke-width": sw }));
+	const tip = el("div", { class: "tooltip" });
+	let a0 = -Math.PI / 2;
+	const sum = total || segments.reduce((s, x) => s + x.value, 0) || 1;
+	segments.forEach((seg) => {
+		const frac = seg.value / sum;
+		if (frac <= 0) return;
+		const a1 = a0 + frac * Math.PI * 2;
+		const large = a1 - a0 > Math.PI ? 1 : 0;
+		const p0 = [c + r * Math.cos(a0), c + r * Math.sin(a0)], p1 = [c + r * Math.cos(a1), c + r * Math.sin(a1)];
+		const d = frac >= 0.9999
+			? `M${c},${c - r}A${r},${r} 0 1 1 ${c - 0.01},${c - r}`
+			: `M${p0[0]},${p0[1]}A${r},${r} 0 ${large} 1 ${p1[0]},${p1[1]}`;
+		const path = sv("path", { d, fill: "none", stroke: css(seg.color), "stroke-width": sw, tabindex: "0" });
+		// spazio di 2px nel colore della superficie tra le fette
+		const gap = sv("line", { x1: c + (r - sw / 2 - 1) * Math.cos(a1), y1: c + (r - sw / 2 - 1) * Math.sin(a1),
+			x2: c + (r + sw / 2 + 1) * Math.cos(a1), y2: c + (r + sw / 2 + 1) * Math.sin(a1), stroke: css("--surface"), "stroke-width": 2 });
+		const showTip = () => {
+			path.setAttribute("stroke-width", sw + 4);
+			const row = el("div", { class: "r" });
+			const name = el("span", {}, seg.label); name.style.setProperty("--c", css(seg.color));
+			row.append(el("b", {}, `${bytes(seg.value)} · ${pct(frac * 100)}`), name);
+			tip.replaceChildren(row);
+			tip.style.display = "block"; tip.style.left = "8px"; tip.style.top = "8px";
+		};
+		const hideTip = () => { path.setAttribute("stroke-width", sw); tip.style.display = "none"; };
+		path.addEventListener("pointerenter", showTip); path.addEventListener("pointerleave", hideTip);
+		path.addEventListener("focus", showTip); path.addEventListener("blur", hideTip);
+		svg.append(path, gap);
+		a0 = a1;
+	});
+	const t1 = sv("text", { x: c, y: c - 2, "text-anchor": "middle", style: "fill: var(--ink); font-size: 18px; font-weight: 650" });
+	t1.textContent = centerLabel[0];
+	const t2 = sv("text", { x: c, y: c + 16, "text-anchor": "middle", class: "axis-text" });
+	t2.textContent = centerLabel[1];
+	svg.append(t1, t2);
+
+	const legend = el("div", { class: "donut-legend" });
+	segments.forEach((seg) => {
+		const row = el("div", { class: "row" });
+		const name = el("span", {}, seg.label); name.style.setProperty("--c", css(seg.color));
+		row.append(name, el("span", {}, `${bytes(seg.value)} · ${pct((seg.value / sum) * 100)}`));
+		legend.append(row);
+	});
+	const wrap = el("div", { class: "donut-wrap" });
+	wrap.append(svg, legend);
+	p.chart.replaceChildren(wrap, tip);
+	fillTable(p.table, ["Parte", "Dimensione", "Quota"], segments.map((s) => [s.label, bytes(s.value), pct((s.value / sum) * 100)]));
+}
+
+/* ---------- stato ---------- */
+let rangeSec = 900;
+let lastStatus = null, lastHistory = [];
+document.querySelectorAll(".seg").forEach((b) => b.addEventListener("click", () => {
+	rangeSec = Number(b.dataset.range);
+	document.querySelectorAll(".seg").forEach((o) => o.setAttribute("aria-pressed", String(o === b)));
+	renderCharts();
+}));
+
+// velocità media sugli ultimi 2 minuti dallo storico (più stabile di quella istantanea)
+function avgUpload(history, fallback) {
+	const now = history.length ? history[history.length - 1].t : 0;
+	const win = history.filter((h) => now - h.t <= 120);
+	if (win.length >= 4) return win.reduce((s, h) => s + h.up, 0) / win.length;
+	return fallback || 0;
+}
+function finishAt(seconds) {
+	const end = new Date(Date.now() + seconds * 1000);
+	const sameDay = end.toDateString() === new Date().toDateString();
+	return end.toLocaleString("it-IT", sameDay ? { hour: "2-digit", minute: "2-digit" } : { weekday: "short", hour: "2-digit", minute: "2-digit" });
+}
+
+function diskHealth(d) {
+	const free = d.avail / d.size;
+	if (d.readonly) return ["sola lettura", "critical"];
+	if (d.fs_errors > 0 || d.io_errors > 0) return ["errori", "critical"];
+	if (d.fs_state && d.fs_state !== "clean") return [d.fs_state, "warning"];
+	if (d.avail < 2 * 1024 ** 3 || free < 0.05) return ["quasi pieno", "critical"];
+	if (free < 0.15) return ["poco spazio", "warning"];
+	return ["sano", "good"];
+}
+
+function renderFiles(list) {
+	const box = $("files");
+	if (!list || !list.length) { box.replaceChildren(el("span", { class: "empty" }, "Nessun file in caricamento")); return; }
+	box.replaceChildren(...list.map((f) => {
+		const item = el("div", { class: "file" });
+		const name = el("div", { class: "file-name" }, f.name.split("/").pop());
+		name.title = f.name;
+		const bar = el("div", { class: "bar" }); bar.append(el("i"));
+		setBar(bar, f.size ? f.bytes / f.size : 0, 2, 2);
+		const meta = el("div", { class: "file-meta" });
+		meta.append(
+			el("span", {}, `${pct(f.percent)} · ${bytes(f.bytes)} di ${bytes(f.size)}`),
+			el("span", {}, `${f.speed ? rate(f.speed) : "—"} · ${f.eta != null ? "mancano " + duration(f.eta) : "—"}`));
+		item.append(name, bar, meta);
+		return item;
+	}));
+}
+
+function renderStatus(s) {
+	const age = (Date.now() - new Date(s.updated)) / 1000;
+	$("updated").textContent = "aggiornato " + new Date(s.updated).toLocaleTimeString("it-IT");
+	const problems = [];
+	if (age > 30) problems.push(`dati vecchi di ${Math.round(age)} s`);
+	if (!s.b2_mounted) problems.push("il mount /data di B2 non è attivo");
+	if (!s.rc_available) problems.push("API di rclone non raggiungibile");
+	$("banner").style.display = problems.length ? "block" : "none";
+	$("banner").textContent = problems.join(" · ");
+	setStatus("mounted", s.b2_mounted ? "attivo" : "non montato", s.b2_mounted ? "good" : "critical");
+
+	const u = s.upload;
+	if (u) {
+		const pending = u.queued_bytes + Math.max(0, u.uploading_bytes - u.uploading_done);
+		const speed = avgUpload(lastHistory, u.speed);
+		const eta = speed > 0 ? pending / speed : NaN;
+		$("pending").textContent = pending > 0 ? bytes(pending) : "Niente";
+		$("pending-eta").textContent = pending <= 0 ? "Tutto caricato su B2"
+			: isFinite(eta) ? `≈ ${duration(eta)} · fine verso le ${finishAt(eta)}` : "in attesa che il caricamento parta…";
+		$("pending-sub").textContent = `${u.queued_files + u.uploading_files} file · caricati in questa sessione ${bytes(u.transferred_session)}`;
+		setBar("up-bar", u.uploading_bytes ? u.uploading_done / u.uploading_bytes : 0, 2, 2);
+		$("queued").textContent = `${u.queued_files} file · ${bytes(u.queued_bytes)}`;
+		$("uploading").textContent = `${u.uploading_files} file · ${bytes(u.uploading_done)} / ${bytes(u.uploading_bytes)}`;
+		$("speed").textContent = speed ? rate(speed) + " (media 2 min)" : "—";
+		$("eta").textContent = pending > 0 && isFinite(eta) ? duration(eta) : "—";
+		if (u.retrying_files) setStatus("retry", `${u.retrying_files} file`, "warning"); else $("retry").textContent = "0";
+		renderFiles(u.current);
+	}
+
+	const c = s.cache;
+	if (c) {
+		$("cache-used").textContent = bytes(c.used);
+		$("cache-sub").textContent = c.max > 0 ? `limite ${bytes(c.max)}` : "nessun limite";
+		setBar("cache-bar", c.max > 0 ? c.used / c.max : 0);
+		$("cache-files").textContent = c.files;
+		$("cache-inuse").textContent = c.in_use;
+		if (c.errored) setStatus("cache-err", String(c.errored), "critical"); else $("cache-err").textContent = "0";
+		setStatus("cache-oos", c.out_of_space ? "sì" : "no", c.out_of_space ? "critical" : "good");
+	}
+
+	$("disks").replaceChildren(...(s.disks || []).map((d) => {
+		const [label, level] = diskHealth(d);
+		const used = d.used / d.size;
+		const card = el("section", { class: "card" });
+		const head = el("div", { class: "card-head" });
+		head.append(el("h2", {}, d.mount === "/" ? "Disco di sistema" : "Disco dati locale"), status(label, level));
+		const bar = el("div", { class: "bar" }); bar.append(el("i")); setBar(bar, used);
+		const rows = [
+			["Mount", d.mount], ["Libero", `${bytes(d.avail)} di ${bytes(d.size)}`], ["Usato", pct(used * 100)],
+			["Inode usati", d.inodes ? pct((d.inodes_used / d.inodes) * 100) : "—"],
+			["Filesystem", `${d.fstype}${d.label ? " · " + d.label : ""} · ${d.device}`],
+			["Stato ext4", d.fs_state || "—"], ["Errori filesystem", String(d.fs_errors)],
+			["Errori I/O (kernel)", String(d.io_errors)], ["SMART", d.smart],
+		].map(([k, v]) => { const r = el("div", { class: "row" }); r.append(el("span", {}, k), el("span", {}, v)); return r; });
+		card.append(head, bar, ...rows);
+		return card;
+	}));
+}
+
+function renderCharts() {
+	const s = lastStatus;
+	const now = lastHistory.length ? lastHistory[lastHistory.length - 1].t : 0;
+	const data = lastHistory.filter((h) => now - h.t <= rangeSec);
+
+	lineChart("c-upload", {
+		title: "Caricamento verso B2", subtitle: "velocità di upload di rclone",
+		series: [{ label: "Upload", color: "--s1", get: (d) => d.up }],
+		data, area: true, byteAxis: true, fmt: { axis: (v) => axisBytes(v, "/s"), value: rate },
+	});
+	lineChart("c-cpu", {
+		title: "CPU", subtitle: s ? `${s.system.cores} core · carico ${s.system.load.join(" / ")}` : "",
+		series: [
+			{ label: "Utente", color: "--s1", get: (d) => d.cpu.user },
+			{ label: "Sistema", color: "--s2", get: (d) => d.cpu.system },
+			{ label: "Attesa I/O", color: "--s3", get: (d) => d.cpu.iowait },
+		],
+		data, yMax: 100, fmt: { axis: (v) => v.toFixed(0) + "%", value: pct },
+	});
+	lineChart("c-mem", {
+		title: "Memoria", subtitle: s ? `RAM ${bytes(s.system.mem.total, 1)} · swap ${bytes(s.system.mem.swap_total, 1)}` : "",
+		series: [
+			{ label: "App", color: "--s1", get: (d) => d.mem.app },
+			{ label: "Cache", color: "--s2", get: (d) => d.mem.cache },
+			{ label: "Swap", color: "--s3", get: (d) => d.mem.swap },
+		],
+		data, byteAxis: true, fmt: { axis: (v) => axisBytes(v), value: (v) => bytes(v) },
+	});
+	lineChart("c-io", {
+		title: "I/O disco dati", subtitle: "lettura e scrittura su /srv/seedbox",
+		series: [
+			{ label: "Lettura", color: "--s1", get: (d) => d.io.read },
+			{ label: "Scrittura", color: "--s2", get: (d) => d.io.write },
+		],
+		data, byteAxis: true, fmt: { axis: (v) => axisBytes(v, "/s"), value: rate },
+	});
+
+	if (s) {
+		const mem = s.system.mem;
+		donutChart("c-ram-pie", {
+			title: "Composizione RAM", subtitle: "app, cache del kernel e memoria libera",
+			segments: [
+				{ label: "App", value: mem.app, color: "--s1" },
+				{ label: "Cache", value: mem.cache, color: "--s2" },
+				{ label: "Libera", value: mem.free, color: "--rest" },
+			],
+			total: mem.total, centerLabel: [pct((mem.app / mem.total) * 100), "usata dalle app"],
+		});
+		const dd = s.data_disk;
+		if (dd) donutChart("c-disk-pie", {
+			title: "Disco dati locale", subtitle: `${dd.mount} · aggiornato ogni minuto`,
+			segments: [
+				{ label: "Download incompleti", value: dd.incomplete, color: "--s1" },
+				{ label: "Cache rclone", value: dd.rclone_cache, color: "--s2" },
+				{ label: "Altro", value: dd.other, color: "--s3" },
+				{ label: "Libero", value: dd.free, color: "--rest" },
+			],
+			total: dd.size, centerLabel: [bytes(dd.free, 0), "liberi"],
+		});
+	}
+}
+
+async function refresh() {
+	try {
+		const [s, h] = await Promise.all([
+			fetch("data/status.json?t=" + Date.now(), { cache: "no-store" }).then((r) => r.json()),
+			fetch("data/history.json?t=" + Date.now(), { cache: "no-store" }).then((r) => r.json()).catch(() => lastHistory),
+		]);
+		lastStatus = s; lastHistory = Array.isArray(h) ? h : [];
+		renderStatus(s);
+		renderCharts();
+	} catch (e) {
+		// tiene l'ultimo stato visibile, segnala solo il problema
+		$("banner").style.display = "block";
+		$("banner").textContent = "Impossibile leggere lo stato: il servizio seedbox-status è attivo?";
+	}
+}
+
+let resizeTimer;
+window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(renderCharts, 150); });
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", renderCharts);
+refresh();
+setInterval(refresh, 5000);
+</script>
+</body>
+</html>

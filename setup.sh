@@ -11,7 +11,7 @@ cd "$DIR"
 export DOCKER_HOST=unix:///run/podman/podman.sock
 
 echo "==> Pacchetti"
-apk add --quiet docker-cli-compose libnatpmp curl jq openssl xxd rclone fuse3 mount
+apk add --quiet docker-cli-compose libnatpmp curl jq openssl xxd rclone fuse3 mount e2fsprogs-extra
 
 echo "==> .env"
 if [ ! -f .env ]; then
@@ -136,18 +136,24 @@ chmod 755 scripts/* openrc/* setup.sh
 install -m 755 openrc/seedbox /etc/init.d/seedbox
 install -m 755 openrc/seedbox-natpmp /etc/init.d/seedbox-natpmp
 install -m 755 openrc/rclone-b2 /etc/init.d/rclone-b2
-for svc in seedbox seedbox-natpmp rclone-b2; do
+install -m 755 openrc/seedbox-diskguard /etc/init.d/seedbox-diskguard
+install -m 755 openrc/seedbox-status /etc/init.d/seedbox-status
+for svc in seedbox seedbox-natpmp seedbox-diskguard seedbox-status rclone-b2; do
 	printf 'SEEDBOX_DIR="%s"\n' "$DIR" > "/etc/conf.d/$svc"
 done
 printf 'SEEDBOX_STORAGE="%s"\n' "$STORAGE" >> /etc/conf.d/seedbox
 rc-update add podman default >/dev/null
 rc-update add seedbox default >/dev/null
 rc-update add seedbox-natpmp default >/dev/null
+rc-update add seedbox-diskguard default >/dev/null
+rc-update add seedbox-status default >/dev/null
 if [ -n "$STORAGE" ]; then
 	rc-update add rclone-b2 default >/dev/null
 else
 	rc-update del rclone-b2 default >/dev/null 2>&1 || true
 fi
+
+mkdir -p /var/lib/seedbox/status
 
 echo "==> Immagini"
 docker compose pull
@@ -163,15 +169,23 @@ else
 fi
 rc-service seedbox start
 rc-service seedbox-natpmp restart
+rc-service seedbox-diskguard restart
+rc-service seedbox-status restart
 
-echo "==> qBittorrent: download incompleti su disco locale (/incomplete)"
+echo "==> qBittorrent: incompleti in locale, categoria b2 diretta su B2, I/O POSIX"
 i=0
 until curl -fsS --max-time 3 http://127.0.0.1:8080/api/v2/app/version >/dev/null 2>&1; do
 	i=$((i + 1)); [ $i -lt 30 ] || break; sleep 2
 done
 curl -fsS http://127.0.0.1:8080/api/v2/app/setPreferences \
-	--data-urlencode 'json={"temp_path_enabled":true,"temp_path":"/incomplete"}' \
+	--data-urlencode 'json={"temp_path_enabled":true,"temp_path":"/incomplete","disk_io_type":2,"file_pool_size":20}' \
 	|| echo "    impossibile aggiornare qBittorrent (impostalo a mano: Opzioni → Download)"
+
+# categoria b2: niente cartella incompleti, scrive direttamente sul mount B2
+mkdir -p "$DATA_ROOT/torrents/b2" && touch "$DATA_ROOT/torrents/b2/.keep"
+curl -fsS http://127.0.0.1:8080/api/v2/torrents/createCategory \
+	--data-urlencode category=b2 --data-urlencode savePath=/data/torrents/b2 \
+	--data-urlencode downloadPathEnabled=false >/dev/null 2>&1 || true
 
 echo "==> Proxy host Nginx Proxy Manager (*.$BASE_DOMAIN)"
 ./scripts/npm-provision.sh

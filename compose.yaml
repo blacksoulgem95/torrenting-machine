@@ -59,15 +59,6 @@ services:
     volumes:
       - ./config/prowlarr:/config
 
-  flaresolverr:
-    <<: *common
-    image: ghcr.io/flaresolverr/flaresolverr:latest
-    container_name: flaresolverr
-    environment:
-      TZ: ${TZ}
-      LOG_LEVEL: info
-    ports: ["8191:8191"]
-
   sonarr:
     <<: *common
     image: lscr.io/linuxserver/sonarr:latest
@@ -144,6 +135,18 @@ services:
       - ./config/filebrowser/config:/config
       - ./config/filebrowser/database:/database
       - ${DATA_ROOT}:/srv:rslave
+
+  # Pagina di stato rclone/B2/dischi (rclone.casa.local). I dati li scrive
+  # il servizio OpenRC seedbox-status in /var/lib/seedbox/status.
+  rclone-status:
+    <<: *common
+    image: docker.io/library/busybox:1.37.0
+    container_name: rclone-status
+    command: ["httpd", "-f", "-p", "8080", "-h", "/www"]
+    read_only: true
+    volumes:
+      - ./status/www:/www:ro
+      - /var/lib/seedbox/status:/www/data:ro
 
 networks:
   seedbox:

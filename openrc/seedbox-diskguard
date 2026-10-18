@@ -1,0 +1,25 @@
+#!/sbin/openrc-run
+# Ferma i download di qBittorrent quando il disco locale sta per riempirsi.
+
+name="Seedbox disk guard"
+description="Mette in pausa i download di qBittorrent con poco spazio libero"
+
+: "${SEEDBOX_DIR:=/home/seedbox/infra}"
+
+supervisor=supervise-daemon
+command="$SEEDBOX_DIR/scripts/disk-guard.sh"
+command_user="seedbox:seedbox"
+output_log="/var/log/seedbox-diskguard.log"
+error_log="/var/log/seedbox-diskguard.log"
+respawn_delay=10
+respawn_max=0
+
+depend() {
+	need net
+	after seedbox
+}
+
+start_pre() {
+	checkpath -f -o "$command_user" -m 0644 "$output_log"
+	checkpath -d -o "$command_user" -m 0755 /var/lib/seedbox
+}

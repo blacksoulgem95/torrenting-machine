@@ -1,6 +1,6 @@
 # Seedbox (Alpine + Podman + WireGuard)
 
-Stack: qBittorrent, Nginx Proxy Manager, Prowlarr, FlareSolverr, Sonarr, Radarr,
+Stack: qBittorrent, Nginx Proxy Manager, Prowlarr, Sonarr, Radarr,
 Lidarr, Bazarr, Seerr (successore di Overseerr), Readarr opzionale.
 Jellyfin gira in un ambiente separato: Fly.io, vedi [jellyfin/README.md](jellyfin/README.md).
 
@@ -35,6 +35,7 @@ Comandi manuali: `doas scripts/dc ps|logs -f sonarr|pull|up -d`.
 |---|---|
 | http://casa.local, http://npm.casa.local | admin NPM |
 | http://fm.casa.local | File Browser (gestione file del bucket, cifrato in modo trasparente) |
+| http://rclone.casa.local | Stato: coda verso B2, cache rclone, dischi, grafici CPU/RAM/I/O |
 | http://qbittorrent.casa.local, http://qbit.casa.local | qBittorrent |
 | http://prowlarr.casa.local | Prowlarr |
 | http://sonarr.casa.local / radarr / lidarr / bazarr / readarr | *arr |
@@ -43,7 +44,7 @@ Comandi manuali: `doas scripts/dc ps|logs -f sonarr|pull|up -d`.
 Sul client (o nel DNS locale) punta tutti i nomi all'IP della seedbox, es. in `/etc/hosts`:
 
 ```
-<ip-vm> casa.local npm.casa.local fm.casa.local qbittorrent.casa.local qbit.casa.local prowlarr.casa.local sonarr.casa.local radarr.casa.local lidarr.casa.local readarr.casa.local bazarr.casa.local seerr.casa.local overseerr.casa.local
+<ip-vm> casa.local npm.casa.local fm.casa.local rclone.casa.local qbittorrent.casa.local qbit.casa.local prowlarr.casa.local sonarr.casa.local radarr.casa.local lidarr.casa.local readarr.casa.local bazarr.casa.local seerr.casa.local overseerr.casa.local
 ```
 
 Note: <rete-vm>/24 è la rete NAT di libvirt (raggiungibile dall'hypervisor o via
@@ -54,8 +55,7 @@ in `.env` e rilancia `scripts/npm-provision.sh`. Le porte dirette (8080, 9696, 8
 
 ## Collegamenti tra le app (da fare nelle UI)
 
-- **Prowlarr**: Settings → Indexers → aggiungi proxy FlareSolverr `http://flaresolverr:8191`
-  (tag `flaresolverr`); Settings → Apps → Sonarr `http://sonarr:8989`, Radarr
+- **Prowlarr**: Settings → Apps → Sonarr `http://sonarr:8989`, Radarr
   `http://radarr:7878`, Lidarr `http://lidarr:8686` (Prowlarr server `http://prowlarr:9696`).
 - **Sonarr/Radarr/Lidarr**: Download client qBittorrent, host `host.containers.internal`,
   porta 8080, categoria `tv` / `movies` / `music`. Root folder `/data/media/tv`,

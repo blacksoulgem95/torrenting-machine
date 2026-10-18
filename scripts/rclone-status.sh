@@ -1,0 +1,192 @@
+#!/bin/sh
+# Ogni 5s scrive per la pagina rclone.casa.local:
+#   $STATUS_DIR/status.json  - stato attuale: cache VFS, coda verso B2, file in
+#                              caricamento (nome + avanzamento), dischi, RAM, CPU
+#   $STATUS_DIR/history.json - ultima ora di campioni per i grafici
+# Gira come root (tune2fs, dmesg, password rc).
+
+STATUS_DIR="${STATUS_DIR:-/var/lib/seedbox/status}"
+RC_URL="${RC_URL:-http://127.0.0.1:5572}"
+RC_PASS_FILE=/etc/rclone/rc.pass
+GUARD_STATE=/var/lib/seedbox/disk-guard.paused
+DISKS="${STATUS_DISKS:-/srv/seedbox /}"
+DATA_DISK="${STATUS_DATA_DISK:-/srv/seedbox}"
+INTERVAL=5
+HISTORY_POINTS=720          # 1 ora a 5s
+DU_EVERY=12                 # composizione del disco dati ogni minuto
+
+rc() {
+	curl -fsS --max-time 4 -u "seedbox:$(cat "$RC_PASS_FILE" 2>/dev/null)" \
+		-H 'Content-Type: application/json' -d '{}' "$RC_URL/$1" 2>/dev/null
+}
+
+# salute di un mount: spazio, inode, sola lettura, stato ext4, errori I/O nel kernel
+disk_json() {
+	mnt=$1
+	dev=$(awk -v m="$mnt" '$2 == m {print $1}' /proc/mounts | tail -n 1)
+	opts=$(awk -v m="$mnt" '$2 == m {print $4}' /proc/mounts | tail -n 1)
+	fstype=$(awk -v m="$mnt" '$2 == m {print $3}' /proc/mounts | tail -n 1)
+	set -- $(df -Pk "$mnt" | awk 'NR==2 {print $2, $3, $4}')
+	size=$(($1 * 1024)) used=$(($2 * 1024)) avail=$(($3 * 1024))
+	set -- $(df -Pi "$mnt" 2>/dev/null | awk 'NR==2 {print $2, $3}')
+	inodes=${1:-0} inodes_used=${2:-0}
+	state="" errors=0 label=""
+	if [ "$fstype" = ext4 ] && [ -b "$dev" ]; then
+		info=$(tune2fs -l "$dev" 2>/dev/null)
+		state=$(printf '%s\n' "$info" | sed -n 's/^Filesystem state: *//p')
+		errors=$(printf '%s\n' "$info" | sed -n 's/^FS Error count: *//p')
+		label=$(printf '%s\n' "$info" | sed -n 's/^Filesystem volume name: *//p' | grep -v '^<none>$')
+	fi
+	short=${dev#/dev/}
+	ioerr=$(dmesg 2>/dev/null | grep -E "I/O error|EXT4-fs error|Buffer I/O" | grep -c "$short")
+	jq -n --arg mount "$mnt" --arg dev "$dev" --arg fstype "$fstype" --arg label "$label" \
+		--arg state "$state" --arg opts "$opts" \
+		--argjson size "$size" --argjson used "$used" --argjson avail "$avail" \
+		--argjson inodes "$inodes" --argjson inodes_used "$inodes_used" \
+		--argjson fs_errors "${errors:-0}" --argjson io_errors "${ioerr:-0}" '{
+		mount: $mount, device: $dev, fstype: $fstype, label: $label,
+		size: $size, used: $used, avail: $avail,
+		inodes: $inodes, inodes_used: $inodes_used,
+		readonly: ($opts | split(",") | index("ro") != null),
+		fs_state: $state, fs_errors: $fs_errors, io_errors: $io_errors,
+		smart: "non disponibile (disco virtuale virtio)"
+	}'
+}
+
+# contatori CPU cumulativi: "attivi_utente attivi_sistema iowait totale"
+cpu_counters() {
+	read -r _ u n s i w irq sirq st _ < /proc/stat
+	echo "$((u + n)) $((s + irq + sirq + st)) $w $((u + n + s + i + w + irq + sirq + st))"
+}
+
+# settori letti/scritti del device di un mount
+disk_counters() {
+	dev=$(awk -v m="$1" '$2 == m {print $1}' /proc/mounts | tail -n 1)
+	awk -v d="${dev#/dev/}" '$3 == d {print $6 * 512, $10 * 512}' /proc/diskstats
+}
+
+mkdir -p "$STATUS_DIR"
+WORK=/run/seedbox-status
+mkdir -p "$WORK" && chmod 700 "$WORK"
+chmod 755 "$STATUS_DIR"
+[ -s "$STATUS_DIR/history.json" ] || echo '[]' > "$STATUS_DIR/history.json"
+echo "$(date '+%F %T') start ($STATUS_DIR ogni ${INTERVAL}s)"
+
+prev_cpu=$(cpu_counters)
+prev_io=$(disk_counters "$DATA_DISK")
+prev_up="" prev_t=$(date +%s)
+iter=0 du_incomplete=0 du_cache=0
+
+while :; do
+	sleep "$INTERVAL"
+	now=$(date +%s)
+	dt=$((now - prev_t)); [ "$dt" -gt 0 ] || dt=$INTERVAL
+
+	# risposte rc su file: la coda può essere enorme e non sta in un argomento di jq
+	for c in vfs/stats vfs/queue core/stats; do
+		f="$WORK/$(echo "$c" | tr / _).json"
+		rc "$c" > "$f" && [ -s "$f" ] || echo null > "$f"
+	done
+	disks=$(for m in $DISKS; do mountpoint -q "$m" || [ "$m" = / ] && disk_json "$m"; done | jq -s .)
+	paused=$(grep -c . "$GUARD_STATE" 2>/dev/null)
+
+	# CPU (% sul totale, tutte le CPU)
+	cur_cpu=$(cpu_counters)
+	cpu=$(echo "$prev_cpu $cur_cpu" | awk '{dt = $8 - $4; if (dt <= 0) dt = 1;
+		printf "{\"user\":%.1f,\"system\":%.1f,\"iowait\":%.1f}", ($5-$1)*100/dt, ($6-$2)*100/dt, ($7-$3)*100/dt}')
+	prev_cpu=$cur_cpu
+
+	# I/O del disco dati (byte/s)
+	cur_io=$(disk_counters "$DATA_DISK")
+	io=$(echo "$prev_io $cur_io" | awk -v dt="$dt" 'NF == 4 {r = ($3-$1)/dt; w = ($4-$2)/dt;
+		printf "{\"read\":%.0f,\"write\":%.0f}", (r < 0 ? 0 : r), (w < 0 ? 0 : w)} NF != 4 {print "{\"read\":0,\"write\":0}"}')
+	prev_io=$cur_io
+
+	# velocità di caricamento verso B2 dai byte trasferiti da rclone (azzerati al riavvio)
+	cur_up=$(jq -r '.bytes // empty' "$WORK/core_stats.json" 2>/dev/null)
+	up=0
+	if [ -n "$cur_up" ] && [ -n "$prev_up" ] && [ "$cur_up" -ge "$prev_up" ]; then
+		up=$(( (cur_up - prev_up) / dt ))
+	fi
+	prev_up=$cur_up prev_t=$now
+
+	# RAM (byte)
+	mem=$(awk '/^(MemTotal|MemFree|Buffers|Cached|SReclaimable|SwapTotal|SwapFree):/ {v[$1] = $2 * 1024}
+		END {cache = v["Buffers:"] + v["Cached:"] + v["SReclaimable:"];
+		app = v["MemTotal:"] - v["MemFree:"] - cache; if (app < 0) app = 0;
+		printf "{\"total\":%.0f,\"app\":%.0f,\"cache\":%.0f,\"free\":%.0f,\"swap_total\":%.0f,\"swap_used\":%.0f}",
+			v["MemTotal:"], app, cache, v["MemFree:"], v["SwapTotal:"], v["SwapTotal:"] - v["SwapFree:"]}' /proc/meminfo)
+	load=$(awk '{printf "[%s,%s,%s]", $1, $2, $3}' /proc/loadavg)
+	cores=$(grep -c '^processor' /proc/cpuinfo)
+
+	# composizione del disco dati (du è costoso: una volta al minuto)
+	if [ $((iter % DU_EVERY)) -eq 0 ] && mountpoint -q "$DATA_DISK"; then
+		du_incomplete=$(du -sk "$DATA_DISK/incomplete" 2>/dev/null | awk '{print $1 * 1024}')
+		du_cache=$(du -sk "$DATA_DISK/rclone-cache" 2>/dev/null | awk '{print $1 * 1024}')
+	fi
+	iter=$((iter + 1))
+
+	sample=$(jq -cn --argjson t "$now" --argjson cpu "$cpu" --argjson mem "$mem" \
+		--argjson io "$io" --argjson up "$up" \
+		'{t: $t, cpu: $cpu, mem: {app: $mem.app, cache: $mem.cache, swap: $mem.swap_used}, io: $io, up: $up}')
+	jq -c --argjson s "$sample" --argjson n "$HISTORY_POINTS" '(. + [$s])[-$n:]' \
+		"$STATUS_DIR/history.json" > "$STATUS_DIR/history.json.tmp" 2>/dev/null \
+		&& mv "$STATUS_DIR/history.json.tmp" "$STATUS_DIR/history.json" \
+		|| echo '[]' > "$STATUS_DIR/history.json"
+
+	jq -n \
+		--slurpfile vfs_f "$WORK/vfs_stats.json" --slurpfile queue_f "$WORK/vfs_queue.json" \
+		--slurpfile core_f "$WORK/core_stats.json" \
+		--argjson disks "${disks:-[]}" --argjson paused "${paused:-0}" \
+		--argjson mounted "$(mountpoint -q /data && echo true || echo false)" \
+		--argjson cpu "$cpu" --argjson mem "$mem" --argjson load "$load" --argjson cores "$cores" \
+		--argjson io "$io" --argjson up "$up" \
+		--argjson du_incomplete "${du_incomplete:-0}" --argjson du_cache "${du_cache:-0}" \
+		--arg data_disk "$DATA_DISK" \
+		--arg updated "$(date -Iseconds)" '
+	def nz: . // 0;
+	$vfs_f[0] as $vfs | $queue_f[0] as $queue | $core_f[0] as $core
+	|
+	($queue.queue // []) as $q
+	| ($core.transferring // []) as $tr
+	| ($disks | map(select(.mount == $data_disk)) | first) as $dd
+	| {
+		updated: $updated,
+		rc_available: ($vfs != null),
+		b2_mounted: $mounted,
+		cache: (if $vfs == null then null else {
+			used: $vfs.diskCache.bytesUsed,
+			max: $vfs.opt.CacheMaxSize,
+			files: $vfs.diskCache.files,
+			errored: $vfs.diskCache.erroredFiles,
+			out_of_space: $vfs.diskCache.outOfSpace,
+			in_use: $vfs.inUse
+		} end),
+		upload: (if $vfs == null then null else {
+			queued_files: ([$q[] | select(.uploading | not)] | length),
+			queued_bytes: ([$q[] | select(.uploading | not) | .size] | add | nz),
+			uploading_files: ([$q[] | select(.uploading)] | length),
+			uploading_bytes: ([$q[] | select(.uploading) | .size] | add | nz),
+			uploading_done: ([$tr[] | .bytes] | add | nz),
+			retrying_files: ([$q[] | select(.tries > 0)] | length),
+			speed: ($core.speed | nz),
+			transferred_session: ($core.bytes | nz),
+			errors_session: ($core.errors | nz),
+			current: [$tr[] | {
+				name: .name, size: (.size | nz), bytes: (.bytes | nz),
+				percent: (.percentage | nz), speed: ((.speedAvg // .speed) | nz), eta: .eta
+			}]
+		} end),
+		system: {
+			cores: $cores, load: $load, cpu: $cpu, mem: $mem, io: $io, upload_rate: $up
+		},
+		data_disk: (if $dd == null then null else {
+			mount: $dd.mount, size: $dd.size, free: $dd.avail,
+			incomplete: $du_incomplete, rclone_cache: $du_cache,
+			other: ([$dd.used - $du_incomplete - $du_cache, 0] | max)
+		} end),
+		disks: $disks,
+		guard: { paused_downloads: $paused }
+	}' > "$STATUS_DIR/status.json.tmp" && mv "$STATUS_DIR/status.json.tmp" "$STATUS_DIR/status.json"
+	chmod 644 "$STATUS_DIR/status.json" "$STATUS_DIR/history.json" 2>/dev/null
+done

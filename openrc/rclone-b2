@@ -19,6 +19,17 @@ if [ -r "$SEEDBOX_DIR/.env" ]; then
 fi
 : "${DATA_ROOT:=/data}" "${RCLONE_CACHE_DIR:=/var/cache/rclone}" "${RCLONE_CACHE_SIZE:=4G}"
 
+# API rc di rclone solo su 127.0.0.1, con password (letta da scripts/rclone-status.sh).
+# Passata via env e non negli argomenti, così non compare in `ps`.
+RC_PASS_FILE=/etc/rclone/rc.pass
+if [ "$(id -u)" = 0 ]; then
+	if [ ! -s "$RC_PASS_FILE" ]; then
+		mkdir -p /etc/rclone && chmod 700 /etc/rclone
+		(umask 077; openssl rand -hex 16 > "$RC_PASS_FILE")
+	fi
+	export RCLONE_RC_USER=seedbox RCLONE_RC_PASS="$(cat "$RC_PASS_FILE")"
+fi
+
 # b2crypt: = b2:$B2_BUCKET/$B2_PATH cifrato (nomi e contenuti) con rclone crypt
 command_args="mount b2crypt: ${DATA_ROOT}
 	--config $RCLONE_CONF
@@ -30,10 +41,11 @@ command_args="mount b2crypt: ${DATA_ROOT}
 	--dir-cache-time 10m --poll-interval 0
 	--buffer-size 8M --vfs-read-chunk-size 16M
 	--transfers 4 --s3-chunk-size 16M --s3-upload-concurrency 2
-	--log-level INFO --log-file /var/log/rclone-b2.log --stats 0"
+	--log-level INFO --log-file /var/log/rclone-b2.log --stats 0
+	--rc --rc-addr 127.0.0.1:5572"
 
 depend() {
-	need net
+	need net localmount
 	after wg-quick.wg0
 	before seedbox
 }
@@ -44,6 +56,12 @@ start_pre() {
 		B2_CRYPT_PASSWORD B2_CRYPT_PASSWORD2; do
 		eval "[ -n \"\$$v\" ]" || { eerror "$v non impostato in $SEEDBOX_DIR/.env"; return 1; }
 	done
+
+	# cache e incompleti stanno sul disco dedicato: senza, riempirebbero il disco di sistema
+	if [ -n "${LOCAL_DISK:-}" ] && ! mountpoint -q "$LOCAL_DISK"; then
+		eerror "$LOCAL_DISK non è montato (disco dati locale): non avvio il mount"
+		return 1
+	fi
 
 	modprobe fuse 2>/dev/null || true
 	# propagazione verso i container (bind /data:rslave in compose.yaml)

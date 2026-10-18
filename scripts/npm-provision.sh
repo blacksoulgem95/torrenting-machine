@@ -27,6 +27,7 @@ readarr.$D|readarr|8787
 bazarr.$D|bazarr|6767
 seerr.$D overseerr.$D|seerr|5055
 fm.$D|filebrowser|80
+rclone.$D|rclone-status|8080
 "
 
 echo "Attendo l'API di Nginx Proxy Manager..."
