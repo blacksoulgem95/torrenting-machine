@@ -66,16 +66,31 @@ services:
       - ./config/lidarr:/config
       - ${DATA_ROOT}:/data:rslave
 
-  # Readarr è stato ritirato upstream (2025): abilitalo con COMPOSE_PROFILES=readarr
-  readarr:
+  # Libri e audiolibri: cerca (indexer da Prowlarr), scarica con qBittorrent
+  # (categoria books) e sistema in /data/media/books e /data/media/audiobooks.
+  # Sostituisce Readarr, ritirato upstream nel 2025.
+  lazylibrarian:
     <<: *common
-    image: lscr.io/linuxserver/readarr:develop
-    container_name: readarr
-    profiles: [readarr]
+    image: lscr.io/linuxserver/lazylibrarian:latest
+    container_name: lazylibrarian
     environment: *lsio-env
-    ports: ["8787:8787"]
+    ports: ["5299:5299"]
     volumes:
-      - ./config/readarr:/config
+      - ./config/lazylibrarian:/config
+      - ${DATA_ROOT}:/data:rslave
+
+  # Lettura e ascolto (app per telefono): librerie su /data/media/books e /audiobooks.
+  # Su FUSE il watcher dei file non funziona: le librerie si rianalizzano a orario.
+  audiobookshelf:
+    <<: *common
+    image: ghcr.io/advplyr/audiobookshelf:latest
+    container_name: audiobookshelf
+    environment:
+      TZ: ${TZ}
+    ports: ["13378:80"]
+    volumes:
+      - ./config/audiobookshelf/config:/config
+      - ./config/audiobookshelf/metadata:/metadata
       - ${DATA_ROOT}:/data:rslave
 
   bazarr:

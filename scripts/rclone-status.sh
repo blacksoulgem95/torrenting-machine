@@ -103,7 +103,7 @@ up_rate() {
 # in un ciclo a parte: un servizio bloccato non deve rallentare status.json).
 # Jellyfin su Fly non si controlla: una richiesta risveglierebbe la macchina sospesa.
 DOMAIN="$(sed -n 's/^BASE_DOMAIN=//p' "$ENV_FILE" | tr -d '"')"
-SERVICES="qbit prowlarr sonarr radarr lidarr readarr bazarr seerr fm rclone npm"
+SERVICES="qbit prowlarr sonarr radarr lidarr lazylibrarian audiobookshelf bazarr seerr fm rclone npm"
 services_loop() {
 	while :; do
 		for s in $SERVICES; do
@@ -126,6 +126,7 @@ prev_cpu=$(cpu_counters) h_cpu=$prev_cpu
 prev_io=$(disk_counters "$DATA_DISK") h_io=$prev_io
 prev_up="" h_up="" prev_t=$(uptime_s) h_t=$prev_t
 iter=0 du_incomplete=0 du_cache=0 disks="[]" startup=null
+log_ino="" log_off=0 log_q=0 log_u=0 log_since=""
 
 while :; do
 	sleep "$INTERVAL"
@@ -178,10 +179,23 @@ while :; do
 			|| echo '[]' > "$STATUS_DIR/history.json"
 
 		# avanzamento dall'ultimo avvio di rclone: voci riprese dalla cache e upload riusciti
-		ln=$(grep -n 'Serving remote control' "$RCLONE_LOG" 2>/dev/null | tail -n 1 | cut -d: -f1)
+		# Legge solo i byte nuovi del log dall'ultimo giro; riparte da zero se il file è
+		# stato ruotato o troncato (logrotate). "Serving remote control" = nuovo avvio.
+		set -- $(stat -c '%i %s' "$RCLONE_LOG" 2>/dev/null) 0 0
+		if [ "$1" != "$log_ino" ] || [ "$2" -lt "$log_off" ]; then
+			log_ino=$1 log_off=0 log_q=0 log_u=0 log_since=""
+		fi
+		if [ "$2" -gt "$log_off" ]; then
+			set -- $(tail -c +$((log_off + 1)) "$RCLONE_LOG" | head -c $(($2 - log_off)) \
+				| awk -v q="$log_q" -v u="$log_u" -v s="${log_since:--}" '
+					/Serving remote control/ {q = 0; u = 0; s = $1 "_" $2}
+					/queuing for upload/ {q++} /upload succeeded/ {u++}
+					END {print q, u, s}') "$2"
+			log_q=$1 log_u=$2 log_since=${3#-} log_off=$4
+		fi
 		dirty=$(grep -rlE '"Dirty": ?true' "$CACHE_META" 2>/dev/null | wc -l)
-		startup=$(tail -n +"${ln:-1}" "$RCLONE_LOG" 2>/dev/null | awk -v d="$dirty" 'NR == 1 {s = $1 " " $2} /queuing for upload/ {q++} /upload succeeded/ {u++}
-			END {printf "{\"requeued\":%d,\"uploaded\":%d,\"dirty\":%d,\"since\":\"%s\"}", q, u, d, s}')
+		startup=$(printf '{"requeued":%d,"uploaded":%d,"dirty":%d,"since":"%s"}' \
+			"$log_q" "$log_u" "$dirty" "$(echo "$log_since" | tr _ ' ')")
 	fi
 	jq -n \
 		--slurpfile vfs_f "$WORK/vfs_stats.json" --slurpfile queue_f "$WORK/vfs_queue.json" \

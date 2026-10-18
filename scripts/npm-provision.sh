@@ -24,7 +24,8 @@ prowlarr.$D|prowlarr|9696
 sonarr.$D|sonarr|8989
 radarr.$D|radarr|7878
 lidarr.$D|lidarr|8686
-readarr.$D|readarr|8787
+lazylibrarian.$D ll.$D|lazylibrarian|5299
+audiobookshelf.$D abs.$D libri.$D|audiobookshelf|80
 bazarr.$D|bazarr|6767
 seerr.$D overseerr.$D|seerr|5055
 fm.$D|filebrowser|80

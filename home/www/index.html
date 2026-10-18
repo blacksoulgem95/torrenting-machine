@@ -150,9 +150,10 @@
 <script>
 // stato: "key" è il nome controllato da seedbox-status (data/services.json)
 const PARTS = [
-	{ num: "I", title: "Guardare", ru: "Смотреть", items: [
+	{ num: "I", title: "Guardare, leggere, ascoltare", ru: "Смотреть и читать", items: [
 		{ name: "Jellyfin", desc: "La biblioteca: film, serie, musica e libri, ovunque.", ext: "jellyfin", note: "su Fly.io" },
 		{ name: "Seerr", desc: "Chiedere un film o una serie: arriva da solo.", sub: "seerr", key: "seerr" },
+		{ name: "Audiobookshelf", desc: "Libri e audiolibri: lettura, ascolto, app per il telefono.", sub: "libri", key: "audiobookshelf" },
 	] },
 	{ num: "II", title: "Cercare e scaricare", ru: "Искать", items: [
 		{ name: "qBittorrent", desc: "I torrent, dietro la VPN.", sub: "qbit", key: "qbit" },
@@ -160,7 +161,7 @@ const PARTS = [
 		{ name: "Sonarr", desc: "Serie TV: episodi nuovi e mancanti.", sub: "sonarr", key: "sonarr" },
 		{ name: "Radarr", desc: "Film.", sub: "radarr", key: "radarr" },
 		{ name: "Lidarr", desc: "Musica.", sub: "lidarr", key: "lidarr" },
-		{ name: "Readarr", desc: "Libri (opzionale, profilo readarr).", sub: "readarr", key: "readarr", optional: true },
+		{ name: "LazyLibrarian", desc: "Libri e audiolibri: autori, uscite, download.", sub: "ll", key: "lazylibrarian" },
 		{ name: "Bazarr", desc: "Sottotitoli per film e serie.", sub: "bazarr", key: "bazarr" },
 	] },
 	{ num: "III", title: "Archivio", ru: "Архив", items: [

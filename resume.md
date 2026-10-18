@@ -25,8 +25,8 @@ Appunti per riprendere il lavoro. Dettagli tecnici in `README.md` e `jellyfin/RE
 - **App** (`*.casa.local` via Nginx Proxy Manager, creati da `scripts/npm-provision.sh`):
   qbittorrent/qbit, prowlarr, sonarr, radarr, lidarr, bazarr, seerr/overseerr,
   fm (File Browser), rclone (pagina di stato), npm; `casa.local` è la dashboard con i link
-  e lo stato dei servizi (`home/www`, container `home` nello stack core). Readarr: solo con
-  `COMPOSE_PROFILES=readarr`. FlareSolverr rimosso: i siti che bloccano l'IP della VPN
+  e lo stato dei servizi (`home/www`, container `home` nello stack core). Libri: lazylibrarian/ll
+  (download) e Audiobookshelf su libri/abs (lettura e ascolto). FlareSolverr rimosso: i siti che bloccano l'IP della VPN
   non li risolveva comunque.
 - **Pagina di stato** `rclone.casa.local`: `scripts/rclone-status.sh` (servizio
   `seedbox-status`) scrive ogni 1s `status.json` e ogni 5s `history.json` (1 ora) in
@@ -38,8 +38,10 @@ Appunti per riprendere il lavoro. Dettagli tecnici in `README.md` e `jellyfin/RE
   `film`/`serie`/`musica`/`libri` → direttamente in `/data/media/...`;
   `b2` → `/data/torrents/b2` senza incompleti locali (download sequenziale forzato dal
   disk guard), per torrent più grandi del disco locale.
-- **Collegamenti fatti**: Sonarr → qBittorrent (categoria `tv`); Prowlarr → Sonarr, Radarr,
-  Lidarr (fullSync).
+- **Collegamenti fatti**: Sonarr, Radarr, Lidarr → qBittorrent e → Jellyfin (aggiornamento
+  libreria, chiave API di Seerr); Seerr → Sonarr, Radarr; Bazarr → Sonarr, Radarr (it + en);
+  LazyLibrarian → qBittorrent (categoria `books`); Prowlarr → Sonarr, Radarr,
+  Lidarr, LazyLibrarian (fullSync).
 - **Jellyfin** su Fly.io: app `<app-fly>` (ams, 2GB, suspend), https://<app-fly>.fly.dev,
   monta `b2crypt:media` in sola lettura con una chiave B2 read-only. Deploy: `jellyfin/deploy.sh`.
 
@@ -74,7 +76,7 @@ Appunti per riprendere il lavoro. Dettagli tecnici in `README.md` e `jellyfin/RE
    login disclaimer «Тварь ли я дрожащая или право имею?».
 7. **Collegamenti restanti**: Bazarr → Sonarr/Radarr; Seerr → Jellyfin
    (`https://<app-fly>.fly.dev`) + Sonarr/Radarr; *arr → Connect → Jellyfin.
-8. **qBittorrent**: limite di ratio/tempo di seed con pausa, così Sonarr/Radarr rimuovono i
+8. ~~**qBittorrent**: limite di ratio/tempo di seed~~ fatto: ratio 2 o 14 giorni, poi pausa; Sonarr/Radarr rimuovono i
    torrent importati (su B2 niente hardlink: i file in seed occupano spazio due volte).
 9. **Backup**: chiavi di cifratura nel password manager; backup di `config/`
    (es. `rclone sync config b2crypt:backup-config` a stack fermo).
@@ -90,6 +92,9 @@ Appunti per riprendere il lavoro. Dettagli tecnici in `README.md` e `jellyfin/RE
 - Le cartelle vuote non esistono su B2: per renderle persistenti serve un file (`.keep`).
 - Prima di riavviare `rclone-b2` aspettare che File Browser abbia finito di ricevere file:
   la coda verso B2 riprende da sola, un caricamento dal browser interrotto no.
+- I log in /var/log ruotano con logrotate (`etc/logrotate-seedbox`, anche ogni ora oltre 100 MB):
+  rclone in INFO scrive centinaia di righe al secondo ("queuing for upload") perché l'I/O POSIX
+  di qBittorrent apre e chiude i file a ogni scrittura.
 - La busybox `cp -a` non preserva i file sparsi; l'awk di busybox va in overflow con
   `%d` oltre 2^31 (usare `%.0f`); risposte grandi (es. `vfs/queue`) vanno passate a jq
   da file, non come argomento.

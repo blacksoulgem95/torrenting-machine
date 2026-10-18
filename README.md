@@ -40,13 +40,14 @@ che restano su anche quando il mount rclone si riavvia).
 | http://rclone.casa.local | Stato: coda verso B2, cache rclone, dischi, grafici CPU/RAM/I/O |
 | http://qbittorrent.casa.local, http://qbit.casa.local | qBittorrent |
 | http://prowlarr.casa.local | Prowlarr |
-| http://sonarr.casa.local / radarr / lidarr / bazarr / readarr | *arr |
+| http://sonarr.casa.local / radarr / lidarr / bazarr / lazylibrarian | *arr e libri |
+| http://libri.casa.local (abs.casa.local) | Audiobookshelf: libri e audiolibri (`ABS_ADMIN_*` in `.env`) |
 | http://seerr.casa.local, http://overseerr.casa.local | Seerr |
 
 Sul client (o nel DNS locale) punta tutti i nomi all'IP della seedbox, es. in `/etc/hosts`:
 
 ```
-<ip-vm> casa.local npm.casa.local fm.casa.local rclone.casa.local qbittorrent.casa.local qbit.casa.local prowlarr.casa.local sonarr.casa.local radarr.casa.local lidarr.casa.local readarr.casa.local bazarr.casa.local seerr.casa.local overseerr.casa.local
+<ip-vm> casa.local npm.casa.local fm.casa.local rclone.casa.local qbittorrent.casa.local qbit.casa.local prowlarr.casa.local sonarr.casa.local radarr.casa.local lidarr.casa.local lazylibrarian.casa.local ll.casa.local libri.casa.local abs.casa.local audiobookshelf.casa.local bazarr.casa.local seerr.casa.local overseerr.casa.local
 ```
 
 Note: <rete-vm>/24 è la rete NAT di libvirt (raggiungibile dall'hypervisor o via
@@ -98,10 +99,15 @@ Log: `/var/log/rclone-b2.log`.
 - `config/` non è salvata su B2: per un backup usa per esempio
   `rclone sync config b2:$B2_BUCKET/backup-config` (a stack fermo).
 
-## Readarr
+## Libri e audiolibri
 
-Progetto ritirato upstream (metadati non più disponibili). Per provarlo comunque:
-`COMPOSE_PROFILES=readarr` in `.env`, poi `doas rc-service seedbox restart`.
+Readarr è stato ritirato upstream (2025) ed è stato sostituito da:
+- **LazyLibrarian** (`lazylibrarian.casa.local`): cerca libri e audiolibri con gli indexer
+  sincronizzati da Prowlarr, scarica con qBittorrent (categoria `books`, `/data/torrents/books`)
+  e sistema i file in `/data/media/books` e `/data/media/audiobooks`.
+- **Audiobookshelf** (`libri.casa.local`): lettura e ascolto, app per telefono. Admin e
+  librerie li crea `scripts/abs-provision.sh`; le librerie si rianalizzano ogni 6 ore
+  (su FUSE il watcher dei file non funziona) o a mano da Impostazioni → Librerie.
 
 ## Verifica
 

@@ -11,7 +11,7 @@ cd "$DIR"
 export DOCKER_HOST=unix:///run/podman/podman.sock
 
 echo "==> Pacchetti"
-apk add --quiet docker-cli-compose libnatpmp curl jq openssl xxd rclone fuse3 mount e2fsprogs-extra
+apk add --quiet docker-cli-compose libnatpmp curl jq openssl xxd rclone fuse3 mount e2fsprogs-extra logrotate
 
 echo "==> .env"
 if [ ! -f .env ]; then
@@ -31,6 +31,9 @@ done
 grep -q '^FILEBROWSER_USER=' .env || printf '\nFILEBROWSER_USER=admin\n' >> .env
 grep -q '^FILEBROWSER_PASS=' .env || echo 'FILEBROWSER_PASS=' >> .env
 sed -i "s/^FILEBROWSER_PASS=$/FILEBROWSER_PASS=$(openssl rand -hex 12)/" .env
+grep -q '^ABS_ADMIN_USER=' .env || printf '\nABS_ADMIN_USER=admin\n' >> .env
+grep -q '^ABS_ADMIN_PASSWORD=' .env || echo 'ABS_ADMIN_PASSWORD=' >> .env
+sed -i "s/^ABS_ADMIN_PASSWORD=$/ABS_ADMIN_PASSWORD=$(openssl rand -hex 12)/" .env
 chown 1000:1000 .env && chmod 600 .env
 . ./.env
 : "${B2_BUCKET:=}" "${LOCAL_INCOMPLETE:=/srv/seedbox/incomplete}"
@@ -55,13 +58,13 @@ else
 fi
 
 echo "==> Config"
-for app in qbittorrent prowlarr sonarr radarr lidarr readarr bazarr seerr; do
+for app in qbittorrent prowlarr sonarr radarr lidarr lazylibrarian bazarr seerr; do
 	mkdir -p "config/$app"
 done
 mkdir -p config/npm/data config/npm/letsencrypt
 mkdir -p config/filebrowser/config config/filebrowser/database
 chown -R "$PUID:$PGID" config/qbittorrent config/prowlarr config/sonarr config/radarr \
-	config/lidarr config/readarr config/bazarr config/seerr config/filebrowser
+	config/lidarr config/lazylibrarian config/audiobookshelf/config config/audiobookshelf/metadata config/bazarr config/seerr config/filebrowser
 
 FB_DB=config/filebrowser/database/filebrowser.db
 if [ ! -f "$FB_DB" ]; then
@@ -139,6 +142,10 @@ install -m 755 openrc/seedbox-natpmp /etc/init.d/seedbox-natpmp
 install -m 755 openrc/rclone-b2 /etc/init.d/rclone-b2
 install -m 755 openrc/seedbox-diskguard /etc/init.d/seedbox-diskguard
 install -m 755 openrc/seedbox-status /etc/init.d/seedbox-status
+# rotazione dei log: giornaliera e, ogni ora, oltre i 100 MB (rclone in INFO scrive molto)
+install -m 644 etc/logrotate-seedbox /etc/logrotate.d/seedbox
+printf '#!/bin/sh\nexec /usr/sbin/logrotate /etc/logrotate.d/seedbox\n' > /etc/periodic/hourly/logrotate-seedbox
+chmod 755 /etc/periodic/hourly/logrotate-seedbox
 for svc in seedbox-core seedbox seedbox-natpmp seedbox-diskguard seedbox-status rclone-b2; do
 	printf 'SEEDBOX_DIR="%s"\n' "$DIR" > "/etc/conf.d/$svc"
 done
@@ -187,7 +194,7 @@ until curl -fsS --max-time 3 http://127.0.0.1:8080/api/v2/app/version >/dev/null
 	i=$((i + 1)); [ $i -lt 30 ] || break; sleep 2
 done
 curl -fsS http://127.0.0.1:8080/api/v2/app/setPreferences \
-	--data-urlencode 'json={"temp_path_enabled":false,"temp_path":"/incomplete","disk_io_type":2,"file_pool_size":20}' \
+	--data-urlencode 'json={"temp_path_enabled":false,"temp_path":"/incomplete","disk_io_type":2,"file_pool_size":20,"max_ratio_enabled":true,"max_ratio":2,"max_seeding_time_enabled":true,"max_seeding_time":20160,"max_ratio_act":0}' \
 	|| echo "    impossibile aggiornare qBittorrent (impostalo a mano: Opzioni → Download)"
 
 # categoria b2: niente cartella incompleti, scrive direttamente sul mount B2
@@ -198,6 +205,7 @@ curl -fsS http://127.0.0.1:8080/api/v2/torrents/createCategory \
 
 echo "==> Proxy host Nginx Proxy Manager (*.$BASE_DOMAIN)"
 ./scripts/npm-provision.sh
+./scripts/abs-provision.sh
 
 cat <<EOF
 

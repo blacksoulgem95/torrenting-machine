@@ -1,0 +1,18 @@
+# Log dei servizi seedbox (installato da setup.sh in /etc/logrotate.d/seedbox).
+# copytruncate: i servizi tengono il file aperto e non sanno riaprirlo.
+# rclone in INFO scrive molto (ogni chiusura di un file in scrittura): limite anche
+# per dimensione, controllato ogni ora da /etc/periodic/hourly.
+/var/log/rclone-b2.log
+/var/log/seedbox-natpmp.log
+/var/log/seedbox-diskguard.log
+/var/log/seedbox-status.log
+{
+	daily
+	maxsize 100M
+	rotate 7
+	compress
+	delaycompress
+	missingok
+	notifempty
+	copytruncate
+}
