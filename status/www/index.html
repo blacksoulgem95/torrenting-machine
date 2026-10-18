@@ -64,7 +64,7 @@
 
 	/* file in caricamento */
 	.files { display: flex; flex-direction: column; gap: 14px; }
-	.file-name { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.file-name { font-size: 13px; font-weight: 600; word-break: break-all; }
 	.file-meta { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--ink-2); font-variant-numeric: tabular-nums; flex-wrap: wrap; }
 	.file .bar { margin: 6px 0 4px; }
 	.empty { color: var(--ink-2); font-size: 14px; }
@@ -97,7 +97,7 @@
 	[hidden] { display: none !important; }
 	.queue-card { margin-top: 16px; }
 	.table-wrap { max-height: 420px; overflow: auto; }
-	.queue-table td:first-child { max-width: 0; width: 70%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.queue-table td:first-child { width: 70%; word-break: break-all; white-space: normal; text-align: left; }
 	.queue-table thead th { position: sticky; top: 0; background: var(--surface); }
 	.banner.info { border-color: var(--s1); }
 	.banner.info::before { content: "ℹ "; color: var(--s1); }
@@ -501,7 +501,7 @@ function renderFiles(list) {
 	if (!list || !list.length) { box.replaceChildren(el("span", { class: "empty" }, "Nessun file in caricamento")); return; }
 	box.replaceChildren(...list.map((f) => {
 		const item = el("div", { class: "file" });
-		const name = el("div", { class: "file-name" }, f.name.split("/").pop());
+		const name = el("div", { class: "file-name" }, f.name);
 		name.title = f.name;
 		const bar = el("div", { class: "bar" }); bar.append(el("i"));
 		setBar(bar, f.size ? f.bytes / f.size : 0, 2, 2);
@@ -551,7 +551,7 @@ function renderQueue(s) {
 		else if (q.wait > 0) state = `parte tra ${duration(q.wait)}`;
 		else state = "in attesa di un posto libero";
 		if (q.tries > 0) state += ` · tentativo ${q.tries + 1}`;
-		const tr = row3(q.name.split("/").pop(), bytes(q.size), state);
+		const tr = row3(q.name, bytes(q.size), state);
 		tr.firstChild.title = q.name;
 		return tr;
 	}));
