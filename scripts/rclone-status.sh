@@ -14,6 +14,10 @@ DATA_DISK="${STATUS_DATA_DISK:-/srv/seedbox}"
 INTERVAL=5
 HISTORY_POINTS=720          # 1 ora a 5s
 DU_EVERY=12                 # composizione del disco dati ogni minuto
+RCLONE_LOG=/var/log/rclone-b2.log
+ENV_FILE="$(dirname "$0")/../.env"
+CACHE_META="$(sed -n 's/^RCLONE_CACHE_DIR=//p' "$ENV_FILE" | tr -d '"')"
+CACHE_META="${CACHE_META:-/srv/seedbox/rclone-cache}/vfsMeta"
 
 rc() {
 	curl -fsS --max-time 4 -u "seedbox:$(cat "$RC_PASS_FILE" 2>/dev/null)" \
@@ -134,11 +138,19 @@ while :; do
 		&& mv "$STATUS_DIR/history.json.tmp" "$STATUS_DIR/history.json" \
 		|| echo '[]' > "$STATUS_DIR/history.json"
 
+	# avanzamento dall'ultimo avvio di rclone: voci riprese dalla cache e upload riusciti
+	ln=$(grep -n 'Serving remote control' "$RCLONE_LOG" 2>/dev/null | tail -n 1 | cut -d: -f1)
+	dirty=$(grep -rlE '"Dirty": ?true' "$CACHE_META" 2>/dev/null | wc -l)
+	startup=$(tail -n +"${ln:-1}" "$RCLONE_LOG" 2>/dev/null | awk -v d="$dirty" 'NR == 1 {s = $1 " " $2} /queuing for upload/ {q++} /upload succeeded/ {u++}
+		END {printf "{\"requeued\":%d,\"uploaded\":%d,\"dirty\":%d,\"since\":\"%s\"}", q, u, d, s}')
 	jq -n \
 		--slurpfile vfs_f "$WORK/vfs_stats.json" --slurpfile queue_f "$WORK/vfs_queue.json" \
 		--slurpfile core_f "$WORK/core_stats.json" \
 		--argjson disks "${disks:-[]}" --argjson paused "${paused:-0}" \
 		--argjson mounted "$(mountpoint -q /data && echo true || echo false)" \
+		--argjson rclone_running "$(pidof rclone >/dev/null && echo true || echo false)" \
+		--argjson queue_limit 100 \
+		--argjson startup "${startup:-null}" \
 		--argjson cpu "$cpu" --argjson mem "$mem" --argjson load "$load" --argjson cores "$cores" \
 		--argjson io "$io" --argjson up "$up" \
 		--argjson du_incomplete "${du_incomplete:-0}" --argjson du_cache "${du_cache:-0}" \
@@ -152,7 +164,9 @@ while :; do
 	| ($disks | map(select(.mount == $data_disk)) | first) as $dd
 	| {
 		updated: $updated,
-		rc_available: ($vfs != null),
+		rc_available: ($core != null),
+		vfs_ready: ($vfs != null),
+		starting: ($rclone_running and ($mounted | not)),
 		b2_mounted: $mounted,
 		cache: (if $vfs == null then null else {
 			used: $vfs.diskCache.bytesUsed,
@@ -162,7 +176,7 @@ while :; do
 			out_of_space: $vfs.diskCache.outOfSpace,
 			in_use: $vfs.inUse
 		} end),
-		upload: (if $vfs == null then null else {
+		upload: (if $core == null then null else {
 			queued_files: ([$q[] | select(.uploading | not)] | length),
 			queued_bytes: ([$q[] | select(.uploading | not) | .size] | add | nz),
 			uploading_files: ([$q[] | select(.uploading)] | length),
@@ -175,8 +189,15 @@ while :; do
 			current: [$tr[] | {
 				name: .name, size: (.size | nz), bytes: (.bytes | nz),
 				percent: (.percentage | nz), speed: ((.speedAvg // .speed) | nz), eta: .eta
-			}]
+			}],
+			# prossimi in coda: prima quelli in caricamento, poi per tempo di partenza
+			queue_items: ([$q[] | {
+				name: .name, size: (.size | nz), tries: (.tries | nz),
+				uploading: .uploading, wait: (if .uploading then 0 else (.expiry // 0) end)
+			}] | sort_by((.uploading | not), .wait) | .[:$queue_limit])
 		} end),
+		rclone_running: $rclone_running,
+		startup: $startup,
 		system: {
 			cores: $cores, load: $load, cpu: $cpu, mem: $mem, io: $io, upload_rate: $up
 		},

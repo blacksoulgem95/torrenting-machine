@@ -106,7 +106,8 @@ start_pre() {
 
 start_post() {
 	local i=0
-	while ! mountpoint -q "$DATA_ROOT" && [ $i -lt 30 ]; do
+	# con molti file in sospeso nella cache l'avvio può durare minuti
+	while ! mountpoint -q "$DATA_ROOT" && [ $i -lt 1800 ]; do
 		sleep 1; i=$((i + 1))
 	done
 	mountpoint -q "$DATA_ROOT" || { eerror "mount non riuscito (vedi /var/log/rclone-b2.log)"; return 1; }

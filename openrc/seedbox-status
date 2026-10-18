@@ -15,7 +15,7 @@ respawn_max=0
 
 depend() {
 	need localmount
-	after rclone-b2
+	# non dipende dal mount: deve mostrare lo stato anche mentre rclone si avvia
 }
 
 start_pre() {

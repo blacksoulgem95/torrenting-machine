@@ -45,7 +45,8 @@ start() {
 
 stop() {
 	ebegin "Stopping $name"
-	_compose stop
+	# i container s6 (linuxserver) chiudono in più di 10s, il default di podman
+	_compose stop --timeout 60
 	eend $?
 }
 

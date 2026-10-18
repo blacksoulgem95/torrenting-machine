@@ -95,6 +95,12 @@
 	table.view th:first-child, table.view td:first-child { text-align: left; }
 	table.view th { color: var(--ink-2); font-weight: 600; }
 	[hidden] { display: none !important; }
+	.queue-card { margin-top: 16px; }
+	.table-wrap { max-height: 420px; overflow: auto; }
+	.queue-table td:first-child { max-width: 0; width: 70%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.queue-table thead th { position: sticky; top: 0; background: var(--surface); }
+	.banner.info { border-color: var(--s1); }
+	.banner.info::before { content: "ℹ "; color: var(--s1); }
 </style>
 </head>
 <body>
@@ -136,6 +142,24 @@
 			<div class="row"><span>Mount /data</span><span id="mounted">—</span></div>
 		</section>
 	</div>
+
+	<section class="card queue-card">
+		<div class="card-head"><h2>Coda di caricamento</h2><span class="sub" id="queue-summary"></span></div>
+		<div id="startup" hidden>
+			<div class="eta" id="startup-title">Avvio di rclone</div>
+			<div class="bar" id="startup-bar"><i></i></div>
+			<div class="row"><span>File in sospeso ripresi dalla cache</span><span id="startup-requeued">—</span></div>
+			<div class="row"><span>Ancora in sospeso nella cache</span><span id="startup-dirty">—</span></div>
+			<div class="row"><span>Caricati su B2 dall'avvio</span><span id="startup-uploaded">—</span></div>
+			<div class="row"><span>Avvio iniziato</span><span id="startup-since">—</span></div>
+		</div>
+		<div class="table-wrap">
+			<table class="view queue-table">
+				<thead><tr><th>File</th><th>Dimensione</th><th>Stato</th></tr></thead>
+				<tbody id="queue-body"><tr><td colspan="3" class="empty">—</td></tr></tbody>
+			</table>
+		</div>
+	</section>
 
 	<div class="filters" role="group" aria-label="Intervallo dei grafici">
 		<span>Intervallo</span>
@@ -490,15 +514,66 @@ function renderFiles(list) {
 	}));
 }
 
+// coda: i primi 100 file (prima quelli in caricamento, poi per partenza)
+function renderQueue(s) {
+	const u = s.upload, body = $("queue-body");
+	const st = s.startup;
+	$("startup").hidden = !(s.starting && st);
+	if (s.starting && st) {
+		// totale stimato: ancora in sospeso + già caricati da quando rclone è partito
+		const total = Math.max(st.dirty + st.uploaded, st.requeued, 1);
+		const done = Math.min(st.requeued, total);
+		const since = st.since ? new Date(st.since.replace(/\//g, "-").replace(" ", "T")) : null;
+		const elapsed = since ? (Date.now() - since) / 1000 : 0;
+		const rateItems = elapsed > 30 ? done / elapsed : 0;
+		$("startup-title").textContent = `Avvio di rclone · ${pct((done / total) * 100)}` +
+			(rateItems > 0 && done < total ? ` · mount tra circa ${duration((total - done) / rateItems)}` : "");
+		setBar("startup-bar", done / total, 2, 2);
+		$("startup-requeued").textContent = `${done} di ~${total}`;
+		$("startup-dirty").textContent = String(st.dirty);
+		$("startup-uploaded").textContent = String(st.uploaded);
+		$("startup-since").textContent = since ? `${since.toLocaleTimeString("it-IT")} (${duration(elapsed)} fa)` : "—";
+	}
+	const total = u ? u.queued_files + u.uploading_files : 0;
+	if (!u || !s.vfs_ready) {
+		$("queue-summary").textContent = s.starting ? "disponibile quando rclone ha finito l'avvio" : "";
+		body.replaceChildren(row3("—", "", ""));
+		return;
+	}
+	const items = u.queue_items || [];
+	$("queue-summary").textContent = total
+		? `${items.length < total ? `primi ${items.length} di ` : ""}${total} file · ${bytes(u.queued_bytes + u.uploading_bytes)}`
+		: "vuota";
+	if (!items.length) { body.replaceChildren(row3("Niente in coda", "", "")); return; }
+	body.replaceChildren(...items.map((q) => {
+		let state;
+		if (q.uploading) state = "in caricamento";
+		else if (q.wait > 0) state = `parte tra ${duration(q.wait)}`;
+		else state = "in attesa di un posto libero";
+		if (q.tries > 0) state += ` · tentativo ${q.tries + 1}`;
+		const tr = row3(q.name.split("/").pop(), bytes(q.size), state);
+		tr.firstChild.title = q.name;
+		return tr;
+	}));
+}
+function row3(a, b, c) {
+	const tr = el("tr");
+	tr.append(el("td", {}, a), el("td", {}, b), el("td", {}, c));
+	return tr;
+}
+
 function renderStatus(s) {
 	const age = (Date.now() - new Date(s.updated)) / 1000;
 	$("updated").textContent = "aggiornato " + new Date(s.updated).toLocaleTimeString("it-IT");
 	const problems = [];
 	if (age > 30) problems.push(`dati vecchi di ${Math.round(age)} s`);
-	if (!s.b2_mounted) problems.push("il mount /data di B2 non è attivo");
-	if (!s.rc_available) problems.push("API di rclone non raggiungibile");
+	if (s.starting) problems.push("rclone in avvio: sta rimettendo in coda i file in sospeso, il mount /data arriva al termine; i caricamenti sono già in corso");
+	else if (!s.b2_mounted) problems.push("il mount /data di B2 non è attivo");
+	if (!s.rc_available && !s.starting) problems.push("API di rclone non raggiungibile");
 	$("banner").style.display = problems.length ? "block" : "none";
+	$("banner").className = "banner" + (s.starting && age <= 30 && problems.length === 1 ? " info" : "");
 	$("banner").textContent = problems.join(" · ");
+	renderQueue(s);
 	setStatus("mounted", s.b2_mounted ? "attivo" : "non montato", s.b2_mounted ? "good" : "critical");
 
 	const u = s.upload;
